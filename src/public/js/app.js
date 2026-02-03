@@ -74,6 +74,12 @@ function initEventListeners() {
     item.addEventListener('click', () => navigateTo(item.dataset.page));
   });
 
+  // Sidebar logo click - navigate to dashboard
+  document.querySelector('.sidebar-logo[data-page]')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    navigateTo('dashboard');
+  });
+
   // Dashboard
   document.getElementById('refresh-wealth-btn').addEventListener('click', refreshDashboard);
   document.getElementById('accounts-list-btn')?.addEventListener('click', () => navigateTo('accounts-list'));
