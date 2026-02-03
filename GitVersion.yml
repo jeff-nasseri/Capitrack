@@ -1,0 +1,66 @@
+mode: ContinuousDeployment
+branches:
+  master:
+    regex: ^master$|^main$
+    mode: ContinuousDeployment
+    tag: ''
+    increment: Minor
+    prevent-increment-of-merged-branch-version: true
+    track-merge-target: false
+    source-branches: []
+    is-source-branch-for: []
+  develop:
+    regex: ^dev(elop)?(ment)?$
+    mode: ContinuousDeployment
+    tag: alpha
+    increment: Minor
+    prevent-increment-of-merged-branch-version: false
+    track-merge-target: true
+    source-branches: []
+    is-source-branch-for: []
+  release:
+    regex: ^releases?[/-]
+    mode: ContinuousDeployment
+    tag: beta
+    increment: None
+    prevent-increment-of-merged-branch-version: true
+    track-merge-target: false
+    source-branches:
+      - develop
+      - master
+      - main
+    is-source-branch-for: []
+  feature:
+    regex: ^features?[/-]
+    mode: ContinuousDeployment
+    tag: useBranchName
+    increment: Inherit
+    source-branches:
+      - develop
+      - master
+      - main
+  hotfix:
+    regex: ^hotfix(es)?[/-]
+    mode: ContinuousDeployment
+    tag: beta
+    increment: Patch
+    source-branches:
+      - master
+      - main
+  pull-request:
+    regex: ^(pull|pull\-requests|pr)[/-]
+    mode: ContinuousDeployment
+    tag: PullRequest
+    increment: Inherit
+    tag-number-pattern: '[/-](?<number>\d+)[-/]'
+    source-branches:
+      - develop
+      - master
+      - main
+      - feature
+      - release
+      - hotfix
+ignore:
+  sha: []
+increment: Inherit
+commit-message-incrementing: Enabled

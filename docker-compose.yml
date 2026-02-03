@@ -1,0 +1,22 @@
+services:
+  capitrack:
+    build: .
+    container_name: capitrack
+    restart: unless-stopped
+    environment:
+      - DB_PATH=/app/data/capitrack.db
+      - SESSION_SECRET=c4p1tr4ck-s3ss10n-s3cr3t-k3y-2026
+      - TRANSACTIONS_DIR=/app/transactions
+    ports:
+      - "3000:3000"
+    volumes:
+      - capitrack-data:/app/data
+      - ./transactions:/app/transactions:ro
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/auth/session"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  capitrack-data:

@@ -1,0 +1,68 @@
+{
+  "name": "capitrack",
+  "version": "1.0.0",
+  "description": "Capitrack - Personal wealth tracking and investment portfolio management platform",
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
+    "seed": "ts-node src/db/seed.ts",
+    "test": "jest --verbose",
+    "lint": "eslint src --ext .ts",
+    "clean": "rimraf dist",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "wealth-tracker",
+    "portfolio",
+    "investment",
+    "finance",
+    "personal-finance",
+    "stock-tracker",
+    "crypto-tracker"
+  ],
+  "author": "Jeff Nasseri",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jeff-nasseri/Capitrack.git"
+  },
+  "bugs": {
+    "url": "https://github.com/jeff-nasseri/Capitrack/issues"
+  },
+  "homepage": "https://github.com/jeff-nasseri/Capitrack#readme",
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^11.7.0",
+    "better-sqlite3-session-store": "^0.1.0",
+    "csv-parse": "^5.5.3",
+    "csv-stringify": "^6.4.5",
+    "express": "^4.21.0",
+    "express-session": "^1.18.1",
+    "multer": "^1.4.5-lts.1",
+    "yahoo-finance2": "^3.13.0"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/better-sqlite3": "^7.6.11",
+    "@types/express": "^4.17.21",
+    "@types/express-session": "^1.18.0",
+    "@types/jest": "^29.5.12",
+    "@types/multer": "^1.4.11",
+    "@types/node": "^20.11.24",
+    "jest": "^30.2.0",
+    "rimraf": "^5.0.5",
+    "ts-jest": "^29.1.2",
+    "ts-node": "^10.9.2",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "files": [
+    "dist",
+    "src/public"
+  ]
+}
