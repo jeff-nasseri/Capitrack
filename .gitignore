@@ -56,3 +56,5 @@ transactions/
 
 # TypeScript cache
 *.tsbuildinfo
+/TODO.txt
+/nul
