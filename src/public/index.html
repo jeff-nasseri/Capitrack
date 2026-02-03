@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Capitrack</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div id="app">
+    <!-- Login Page -->
+    <div id="login-page" class="page active">
+      <div class="login-container">
+        <div class="login-card">
+          <div class="login-logo"><img src="/static/images/capitrack-logo.png" alt="Capitrack" class="login-logo-img"></div>
+          <h1>Capitrack</h1>
+          <p class="login-subtitle">Track your investments and grow your wealth</p>
+          <form id="login-form">
+            <div class="form-group">
+              <label for="login-username">Username</label>
+              <input type="text" id="login-username" placeholder="Enter username" required autocomplete="username">
+            </div>
+            <div class="form-group">
+              <label for="login-password">Password</label>
+              <input type="password" id="login-password" placeholder="Enter password" required autocomplete="current-password">
+            </div>
+            <button type="submit" class="btn btn-primary btn-block">
+              <i class="fas fa-sign-in-alt"></i> Sign In
+            </button>
+            <div id="login-error" class="error-message hidden"></div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main App -->
+    <div id="main-app" class="hidden">
+      <!-- Sidebar -->
+      <nav id="sidebar">
+        <div class="sidebar-logo">
+          <img src="/static/images/capitrack-logo.png" alt="Capitrack" class="sidebar-logo-img">
+          <span class="sidebar-label">Capitrack</span>
+        </div>
+        <ul class="sidebar-nav">
+          <li class="nav-item active" data-page="dashboard" title="Dashboard">
+            <i class="fas fa-compass"></i><span class="sidebar-label">Dashboard</span>
+          </li>
+          <li class="nav-item" data-page="holdings" title="Holdings">
+            <i class="fas fa-search"></i><span class="sidebar-label">Holdings</span>
+          </li>
+          <li class="nav-item" data-page="accounts-list" title="Accounts">
+            <i class="fas fa-building-columns"></i><span class="sidebar-label">Accounts</span>
+          </li>
+          <li class="nav-item" data-page="activity" title="Activity">
+            <i class="fas fa-chart-bar"></i><span class="sidebar-label">Activity</span>
+          </li>
+          <li class="nav-item" data-page="goals" title="Goals">
+            <i class="fas fa-receipt"></i><span class="sidebar-label">Goals</span>
+          </li>
+          <li class="nav-item" data-page="calendar" title="Calendar">
+            <i class="fas fa-calendar-alt"></i><span class="sidebar-label">Calendar</span>
+          </li>
+        </ul>
+        <div class="sidebar-bottom">
+          <button class="nav-item" id="sidebar-toggle" title="Expand sidebar">
+            <i class="fas fa-angles-right"></i><span class="sidebar-label">Collapse</span>
+          </button>
+          <button class="nav-item" data-page="settings" title="Settings">
+            <i class="fas fa-cog"></i><span class="sidebar-label">Settings</span>
+          </button>
+          <button class="nav-item" id="logout-btn" title="Logout">
+            <i class="fas fa-sign-out-alt"></i><span class="sidebar-label">Logout</span>
+          </button>
+        </div>
+      </nav>
+
+      <!-- Content -->
+      <main id="content">
+        <!-- Dashboard Page -->
+        <div id="dashboard-page" class="page active">
+          <div class="dashboard-hero">
+            <div class="hero-left">
+              <div class="hero-amount" id="hero-total-wealth">$0.00</div>
+              <div class="hero-sub">
+                <span class="hero-change" id="hero-change">+$0.00</span>
+                <span class="hero-change-pct" id="hero-change-pct">+0.00%</span>
+                <span class="hero-period" id="hero-period">Last 3 months</span>
+              </div>
+              <button id="refresh-wealth-btn" class="btn btn-ghost btn-icon refresh-btn" title="Refresh prices">
+                <i class="fas fa-sync-alt"></i>
+              </button>
+            </div>
+          </div>
+          <div class="dashboard-chart-section">
+            <div class="chart-wrapper chart-wrapper-dashboard">
+              <canvas id="dashboard-chart"></canvas>
+            </div>
+            <div class="chart-periods" id="dashboard-periods">
+              <button class="period-btn" data-period="1w">1W</button>
+              <button class="period-btn" data-period="1m">1M</button>
+              <button class="period-btn active" data-period="3m">3M</button>
+              <button class="period-btn" data-period="6m">6M</button>
+              <button class="period-btn" data-period="ytd">YTD</button>
+              <button class="period-btn" data-period="1y">1Y</button>
+              <button class="period-btn" data-period="5y">5Y</button>
+              <button class="period-btn" data-period="all">ALL</button>
+            </div>
+          </div>
+          <div class="dashboard-body">
+            <div class="dashboard-left">
+              <div class="section-header-row">
+                <h3>Accounts</h3>
+                <button class="btn btn-ghost btn-icon btn-sm" id="accounts-list-btn" title="View all"><i class="fas fa-list"></i></button>
+              </div>
+              <div id="accounts-list-dashboard" class="accounts-list-col"></div>
+            </div>
+            <div class="dashboard-right">
+              <div class="section-header-row">
+                <h3>Holdings</h3>
+                <a href="#" class="view-all-link" id="view-all-holdings">View All <i class="fas fa-chevron-right"></i></a>
+              </div>
+              <div id="holdings-sidebar" class="holdings-sidebar"></div>
+              <div class="section-header-row" style="margin-top:1.5rem;">
+                <h3>Saving Goals</h3>
+              </div>
+              <div id="goals-sidebar" class="goals-sidebar"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Holdings Page (all holdings across accounts) -->
+        <div id="holdings-page" class="page hidden">
+          <div class="page-header"><h2>Holdings</h2></div>
+          <div id="all-holdings-list" class="holdings-table-wrapper"></div>
+        </div>
+
+        <!-- Accounts List Page -->
+        <div id="accounts-list-page" class="page hidden">
+          <div class="page-header">
+            <h2>Accounts</h2>
+            <button class="btn btn-primary" id="accounts-add-btn"><i class="fas fa-plus"></i> Add Account</button>
+          </div>
+          <div id="accounts-grid" class="accounts-grid"></div>
+        </div>
+
+        <!-- Activity Page (all transactions) -->
+        <div id="activity-page" class="page hidden">
+          <div class="page-header">
+            <h2>Activity</h2>
+            <div class="page-actions">
+              <button class="btn btn-sm btn-secondary" id="activity-export-btn"><i class="fas fa-download"></i> Export</button>
+            </div>
+          </div>
+          <div id="activity-list" class="table-container"></div>
+        </div>
+
+        <!-- Account Detail Page -->
+        <div id="account-page" class="page hidden">
+          <div class="page-header">
+            <button class="btn btn-ghost" id="back-to-dashboard"><i class="fas fa-arrow-left"></i></button>
+            <div class="account-title-group">
+              <h2 id="account-title">Account</h2>
+              <span class="account-currency-badge" id="account-currency-badge">USD</span>
+            </div>
+            <div class="page-actions">
+              <button class="btn btn-sm btn-ghost btn-icon" id="import-tx-btn" title="Import"><i class="fas fa-upload"></i></button>
+              <button class="btn btn-sm btn-ghost btn-icon" id="export-tx-btn" title="Export"><i class="fas fa-download"></i></button>
+              <button class="btn btn-sm btn-ghost btn-icon" id="add-tx-btn" title="Add Transaction"><i class="fas fa-plus"></i></button>
+            </div>
+          </div>
+          <!-- Account value + chart -->
+          <div class="account-hero">
+            <div class="account-hero-left">
+              <div class="account-hero-value" id="account-hero-value">$0.00</div>
+              <div class="account-hero-change" id="account-hero-change">
+                <span class="hero-change">+$0.00</span>
+                <span class="hero-change-pct">+0.00%</span>
+                <span class="hero-period">past 3 months</span>
+              </div>
+              <button class="btn btn-ghost btn-icon refresh-btn refresh-account" title="Refresh"><i class="fas fa-sync-alt"></i></button>
+            </div>
+            <div class="account-hero-right">
+              <div class="account-stats-card">
+                <h4>Cash Balance</h4>
+                <div class="stat-value" id="account-cash-balance">$0.00</div>
+              </div>
+            </div>
+          </div>
+          <div class="account-chart-section">
+            <div class="chart-wrapper chart-wrapper-account">
+              <canvas id="account-chart"></canvas>
+            </div>
+            <div class="chart-periods" id="account-periods">
+              <button class="period-btn" data-period="1w">1W</button>
+              <button class="period-btn" data-period="1m">1M</button>
+              <button class="period-btn active" data-period="3m">3M</button>
+              <button class="period-btn" data-period="6m">6M</button>
+              <button class="period-btn" data-period="ytd">YTD</button>
+              <button class="period-btn" data-period="1y">1Y</button>
+              <button class="period-btn" data-period="5y">5Y</button>
+              <button class="period-btn" data-period="all">ALL</button>
+            </div>
+          </div>
+          <!-- Account performance metrics -->
+          <div class="account-metrics" id="account-metrics">
+            <div class="metric-card">
+              <div class="metric-label">Investments</div>
+              <div class="metric-value" id="metric-investments">$0.00</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-label">Net Contribution</div>
+              <div class="metric-value" id="metric-contribution">$0.00</div>
+            </div>
+            <div class="metric-card">
+              <div class="metric-label">Cost Basis</div>
+              <div class="metric-value" id="metric-cost-basis">$0.00</div>
+            </div>
+          </div>
+          <!-- Holdings table -->
+          <div class="section">
+            <div class="section-header-row">
+              <h3>Holdings</h3>
+            </div>
+            <div id="account-holdings-table" class="holdings-table-wrapper"></div>
+          </div>
+        </div>
+
+        <!-- Symbol Detail Page -->
+        <div id="symbol-page" class="page hidden">
+          <div class="page-header">
+            <button class="btn btn-ghost" id="back-to-account"><i class="fas fa-arrow-left"></i></button>
+            <div class="symbol-title-group">
+              <img id="symbol-logo" class="symbol-logo" src="" alt="">
+              <div>
+                <h2 id="symbol-title">Symbol</h2>
+                <span class="symbol-ticker" id="symbol-ticker">TICKER</span>
+              </div>
+            </div>
+            <div class="page-actions">
+              <button class="btn btn-sm btn-ghost btn-icon" title="Add Transaction" onclick="showAddTransactionForSymbol()"><i class="fas fa-plus"></i></button>
+              <div class="symbol-tabs">
+                <button class="symbol-tab active" data-tab="overview">Overview</button>
+                <button class="symbol-tab" data-tab="lots">Lots</button>
+                <button class="symbol-tab" data-tab="quotes">Quotes</button>
+              </div>
+            </div>
+          </div>
+          <!-- Symbol hero -->
+          <div class="symbol-hero">
+            <div class="symbol-hero-left">
+              <div class="symbol-hero-price" id="symbol-hero-price">$0.00</div>
+              <div class="symbol-hero-change" id="symbol-hero-change">
+                <span>-$0.00 (-0.00%) past 3 months</span>
+              </div>
+            </div>
+            <div class="symbol-hero-right">
+              <div class="symbol-holding-card">
+                <div class="shc-row"><span class="shc-qty" id="shc-qty">0</span><span class="shc-value" id="shc-value">$0.00</span></div>
+                <div class="shc-label">shares<span id="shc-currency">USD</span></div>
+                <div class="shc-detail"><span>Book value</span><span id="shc-book">$0.00</span></div>
+                <div class="shc-detail"><span>Average cost</span><span id="shc-avg-cost">$0.00</span></div>
+                <div class="shc-detail"><span>% of my portfolio</span><span id="shc-portfolio-pct">0.00%</span></div>
+                <div class="shc-detail"><span>Today's return</span><span id="shc-today-return" class="text-success">$0.00 (0.00%)</span></div>
+                <div class="shc-detail"><span>Total return</span><span id="shc-total-return" class="text-success">$0.00 (0.00%)</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="symbol-chart-section">
+            <div class="chart-wrapper chart-wrapper-symbol">
+              <canvas id="symbol-chart"></canvas>
+            </div>
+            <div class="chart-periods" id="symbol-periods">
+              <button class="period-btn" data-period="1w">1W</button>
+              <button class="period-btn" data-period="1m">1M</button>
+              <button class="period-btn active" data-period="3m">3M</button>
+              <button class="period-btn" data-period="6m">6M</button>
+              <button class="period-btn" data-period="ytd">YTD</button>
+              <button class="period-btn" data-period="1y">1Y</button>
+              <button class="period-btn" data-period="5y">5Y</button>
+              <button class="period-btn" data-period="all">ALL</button>
+            </div>
+          </div>
+          <!-- Symbol detail tabs content -->
+          <div id="symbol-tab-overview" class="symbol-tab-content active">
+            <!-- About section -->
+            <div class="section" id="symbol-about-section">
+              <h3>About</h3>
+              <div id="symbol-tags" class="symbol-tags"></div>
+              <p id="symbol-description" class="symbol-description"></p>
+            </div>
+            <!-- Price stats -->
+            <div class="symbol-price-stats" id="symbol-price-stats"></div>
+          </div>
+          <div id="symbol-tab-lots" class="symbol-tab-content">
+            <div class="section"><h3>Transaction History</h3><div id="symbol-transactions" class="table-container"></div></div>
+          </div>
+          <div id="symbol-tab-quotes" class="symbol-tab-content">
+            <div class="section"><h3>Quote Details</h3><div id="symbol-quote-details" class="quote-details-grid"></div></div>
+          </div>
+        </div>
+
+        <!-- Calendar Page -->
+        <div id="calendar-page" class="page hidden">
+          <div class="page-header">
+            <h2>Calendar</h2>
+            <div class="page-actions">
+              <button class="btn btn-ghost btn-icon" id="cal-prev" title="Previous"><i class="fas fa-chevron-left"></i></button>
+              <span id="cal-title" class="cal-title">January 2026</span>
+              <button class="btn btn-ghost btn-icon" id="cal-next" title="Next"><i class="fas fa-chevron-right"></i></button>
+              <div class="cal-view-switcher">
+                <button class="cal-view-btn active" data-view="month">Month</button>
+                <button class="cal-view-btn" data-view="week">Week</button>
+                <button class="cal-view-btn" data-view="year">Year</button>
+              </div>
+              <button class="btn btn-ghost btn-sm" id="cal-today">Today</button>
+            </div>
+          </div>
+          <div id="calendar-container" class="calendar-container">
+            <div class="loading-spinner">Loading calendar...</div>
+          </div>
+        </div>
+
+        <!-- Goals Page -->
+        <div id="goals-page" class="page hidden">
+          <div class="page-header">
+            <h2>Financial Goals</h2>
+            <div class="page-actions">
+              <div class="goals-year-nav">
+                <button class="btn btn-ghost btn-icon btn-sm" id="goals-year-prev"><i class="fas fa-chevron-left"></i></button>
+                <span id="goals-year-label" class="goals-year-label">2026</span>
+                <button class="btn btn-ghost btn-icon btn-sm" id="goals-year-next"><i class="fas fa-chevron-right"></i></button>
+              </div>
+              <button class="btn btn-primary" id="add-goal-btn"><i class="fas fa-plus"></i> Add Goal</button>
+            </div>
+          </div>
+          <div id="goals-year-progress" class="goals-year-progress"></div>
+          <div id="goals-hierarchy" class="goals-hierarchy"></div>
+        </div>
+
+        <!-- Settings Page -->
+        <div id="settings-page" class="page hidden">
+          <div class="page-header"><h2>Settings</h2></div>
+          <div class="settings-layout">
+            <div class="settings-menu">
+              <button class="settings-menu-item active" data-settings="accounts"><i class="fas fa-wallet"></i><span>Accounts</span></button>
+              <button class="settings-menu-item" data-settings="goals"><i class="fas fa-bullseye"></i><span>Goals</span></button>
+              <button class="settings-menu-item" data-settings="tags"><i class="fas fa-tags"></i><span>Tags</span></button>
+              <button class="settings-menu-item" data-settings="currencies"><i class="fas fa-exchange-alt"></i><span>Currency Rates</span></button>
+              <button class="settings-menu-item" data-settings="database"><i class="fas fa-database"></i><span>Database</span></button>
+              <button class="settings-menu-item" data-settings="appearance"><i class="fas fa-palette"></i><span>Appearance</span></button>
+              <button class="settings-menu-item" data-settings="security"><i class="fas fa-lock"></i><span>Security</span></button>
+              <button class="settings-menu-item" data-settings="about"><i class="fas fa-info-circle"></i><span>About</span></button>
+              <button class="settings-menu-item" data-settings="danger"><i class="fas fa-skull-crossbones"></i><span>Danger Zone</span></button>
+            </div>
+            <div class="settings-content">
+              <div class="settings-panel active" id="settings-accounts">
+                <div class="settings-section">
+                  <div class="section-header"><h3><i class="fas fa-wallet"></i> Accounts</h3><button class="btn btn-sm btn-primary" id="add-account-btn"><i class="fas fa-plus"></i> Add</button></div>
+                  <div id="settings-accounts-list" class="settings-list"></div>
+                </div>
+              </div>
+              <div class="settings-panel" id="settings-goals">
+                <div class="settings-section">
+                  <div class="section-header"><h3><i class="fas fa-bullseye"></i> Goals</h3><div class="section-header-actions"><button class="btn btn-sm btn-danger" id="remove-all-goals-btn"><i class="fas fa-trash-alt"></i> Remove All</button><button class="btn btn-sm btn-primary" id="settings-add-goal-btn"><i class="fas fa-plus"></i> Add</button></div></div>
+                  <div id="settings-goals-list" class="settings-list"></div>
+                </div>
+              </div>
+              <div class="settings-panel" id="settings-tags">
+                <div class="settings-section">
+                  <div class="section-header"><h3><i class="fas fa-tags"></i> Tags</h3><button class="btn btn-sm btn-primary" id="add-tag-btn"><i class="fas fa-plus"></i> Add</button></div>
+                  <div id="settings-tags-list" class="settings-list"></div>
+                </div>
+              </div>
+              <div class="settings-panel" id="settings-currencies">
+                <div class="settings-section">
+                  <div class="section-header"><h3><i class="fas fa-exchange-alt"></i> Currency Rates</h3><button class="btn btn-sm btn-primary" id="add-rate-btn"><i class="fas fa-plus"></i> Add</button></div>
+                  <div id="settings-rates-list" class="settings-list"></div>
+                </div>
+              </div>
+              <div class="settings-panel" id="settings-appearance">
+                <div class="settings-section">
+                  <div class="section-header"><h3><i class="fas fa-palette"></i> Appearance</h3></div>
+                  <div class="settings-form">
+                    <div class="form-group">
+                      <label>Main Currency</label>
+                      <p class="form-hint">All dashboard values will be displayed in this currency</p>
+                      <select id="main-currency-select">
+                        <option value="EUR">EUR - Euro</option>
+                        <option value="USD">USD - US Dollar</option>
+                        <option value="GBP">GBP - British Pound</option>
+                        <option value="CHF">CHF - Swiss Franc</option>
+                        <option value="JPY">JPY - Japanese Yen</option>
+                        <option value="CAD">CAD - Canadian Dollar</option>
+                        <option value="AUD">AUD - Australian Dollar</option>
+                        <option value="CNY">CNY - Chinese Yuan</option>
+                      </select>
+                    </div>
+                    <div class="form-group"><label>Theme Mode</label>
+                      <div class="theme-switcher">
+                        <button class="theme-option" data-theme-val="dark"><i class="fas fa-moon"></i><span>Dark</span></button>
+                        <button class="theme-option" data-theme-val="light"><i class="fas fa-sun"></i><span>Light</span></button>
+                      </div>
+                    </div>
+                    <div class="form-group">
+                      <div class="toggle-row">
+                        <label>Show transaction dots on charts</label>
+                        <button id="toggle-tx-dots" class="toggle-switch active" type="button"></button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="settings-panel" id="settings-security">
+                <div class="settings-section">
+                  <div class="section-header"><h3><i class="fas fa-lock"></i> Change Password</h3></div>
+                  <form id="password-form" class="settings-form">
+                    <div class="form-group"><label>Current Password</label><input type="password" id="current-password" required></div>
+                    <div class="form-group"><label>New Password</label><input type="password" id="new-password" required></div>
+                    <div class="form-group"><label>Confirm New Password</label><input type="password" id="confirm-password" required></div>
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Update Password</button>
+                    <div id="password-message" class="hidden"></div>
+                  </form>
+                </div>
+              </div>
+              <div class="settings-panel" id="settings-database">
+                <div class="settings-section">
+                  <div class="section-header"><h3><i class="fas fa-database"></i> Database Configuration</h3></div>
+                  <div class="settings-form">
+                    <div class="form-group">
+                      <label>Database Path</label>
+                      <p class="form-hint">The path to the SQLite database file. Changes require a refresh to take effect.</p>
+                      <div class="input-with-button">
+                        <input type="text" id="db-path-input" placeholder="/path/to/capitrack.db">
+                        <button class="btn btn-secondary" id="browse-db-btn" type="button"><i class="fas fa-folder-open"></i></button>
+                      </div>
+                    </div>
+                    <div class="form-group">
+                      <p class="form-hint" id="db-status"></p>
+                    </div>
+                    <div class="form-actions">
+                      <button class="btn btn-primary" id="save-db-path-btn"><i class="fas fa-save"></i> Save Path</button>
+                      <button class="btn btn-secondary" id="refresh-platform-btn"><i class="fas fa-sync-alt"></i> Refresh Platform</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="settings-panel" id="settings-about">
+                <div class="settings-section">
+                  <div class="section-header"><h3><i class="fas fa-info-circle"></i> About Capitrack</h3></div>
+                  <div class="about-content">
+                    <div class="about-logo">
+                      <img src="/static/images/capitrack-logo.png" alt="Capitrack" class="about-logo-img">
+                    </div>
+                    <div class="about-info">
+                      <h2>Capitrack</h2>
+                      <p class="about-description">Personal wealth tracking and investment portfolio management platform</p>
+                      <div class="about-details">
+                        <div class="about-item">
+                          <span class="about-label">Version</span>
+                          <span class="about-value" id="about-version">1.0.0</span>
+                        </div>
+                        <div class="about-item">
+                          <span class="about-label">License</span>
+                          <span class="about-value">MIT (Open Source)</span>
+                        </div>
+                        <div class="about-item">
+                          <span class="about-label">Author</span>
+                          <span class="about-value">Jeff Nasseri</span>
+                        </div>
+                      </div>
+                      <div class="about-links">
+                        <a href="https://github.com/jeff-nasseri/Capitrack" target="_blank" rel="noopener noreferrer" class="btn btn-secondary">
+                          <i class="fab fa-github"></i> View on GitHub
+                        </a>
+                        <a href="https://github.com/jeff-nasseri/Capitrack/issues" target="_blank" rel="noopener noreferrer" class="btn btn-ghost">
+                          <i class="fas fa-bug"></i> Report an Issue
+                        </a>
+                      </div>
+                      <p class="about-opensource">
+                        <i class="fas fa-heart text-danger"></i> Capitrack is open source software. Contributions are welcome!
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="settings-panel" id="settings-danger">
+                <div class="settings-section danger-zone">
+                  <div class="section-header"><h3><i class="fas fa-skull-crossbones"></i> Danger Zone</h3></div>
+                  <div class="settings-form">
+                    <div class="danger-item">
+                      <div class="danger-item-info">
+                        <h4>Purge All Data</h4>
+                        <p>Permanently remove all accounts, transactions, goals, and cached price data. This action cannot be undone.</p>
+                      </div>
+                      <button class="btn btn-danger" id="purge-btn"><i class="fas fa-trash-alt"></i> Purge Everything</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <!-- Modal -->
+    <div id="modal-overlay" class="modal-overlay hidden">
+      <div class="modal" id="modal">
+        <div class="modal-header">
+          <h3 id="modal-title">Modal</h3>
+          <button class="btn btn-ghost btn-icon modal-close"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body" id="modal-body"></div>
+      </div>
+    </div>
+
+    <!-- Import Modal -->
+    <div id="import-modal-overlay" class="modal-overlay hidden">
+      <div class="modal" id="import-modal">
+        <div class="modal-header">
+          <h3>Import Transactions</h3>
+          <button class="btn btn-ghost btn-icon import-modal-close"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body">
+          <p class="modal-info">
+            <strong>Supported formats:</strong> Revolut Stocks, Revolut Commodities, Trezor, or generic CSV.<br>
+            The platform auto-detects the format and skips duplicate transactions.
+          </p>
+          <form id="import-form">
+            <div class="form-group"><label>CSV File</label><input type="file" id="import-file" accept=".csv" required></div>
+            <div id="import-format-detected" class="hidden" style="margin-bottom:1rem;"></div>
+            <button type="submit" class="btn btn-primary btn-block"><i class="fas fa-upload"></i> Import</button>
+          </form>
+          <div id="import-result" class="hidden"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="toast-container"></div>
+  </div>
+  <script type="module" src="/js/app.js"></script>
+</body>
+</html>
