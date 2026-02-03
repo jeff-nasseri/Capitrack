@@ -7,12 +7,18 @@ const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get() as { c
 if (userCount.count === 0) {
   console.log('Seeding database with initial data...');
 
-  // Create default user
-  const passwordHash = bcrypt.hashSync('Jeff123!Nasseri123!', 12);
+  // Create default user from environment variables or use defaults
+  const initialUsername = process.env.CAPITRACK_INIT_USERNAME || 'admin';
+  const initialPassword = process.env.CAPITRACK_INIT_PASSWORD || 'admin';
+  const baseCurrency = process.env.CAPITRACK_BASE_CURRENCY || 'EUR';
+
+  const passwordHash = bcrypt.hashSync(initialPassword, 12);
   db.prepare(`
     INSERT INTO users (username, password_hash, base_currency)
     VALUES (?, ?, ?)
-  `).run('JeffNasseri', passwordHash, 'EUR');
+  `).run(initialUsername, passwordHash, baseCurrency);
+
+  console.log(`Created initial user: ${initialUsername}`);
 
   // Create default accounts
   db.prepare(`

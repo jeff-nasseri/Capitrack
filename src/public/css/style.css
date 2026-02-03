@@ -1673,22 +1673,31 @@ tr:hover td { background: var(--bg-card-hover); }
   .cal-day { min-height: 70px; }
 }
 
-/* ===== Logo Styles ===== */
-.login-logo-img {
-  width: 80px;
-  height: 80px;
-  object-fit: contain;
+/* ===== Logo Icon Styles ===== */
+.login-logo i {
+  font-size: 4rem;
+  color: var(--primary);
 }
 
-.sidebar-logo-img {
-  width: 32px;
-  height: 32px;
-  object-fit: contain;
+.sidebar-logo-icon {
+  font-size: 1.5rem;
+  color: var(--primary);
+  transition: all var(--transition);
 }
 
-#sidebar.expanded .sidebar-logo-img {
-  width: 28px;
-  height: 28px;
+a.sidebar-logo {
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+a.sidebar-logo:hover .sidebar-logo-icon {
+  color: var(--primary-hover);
+  transform: scale(1.1);
+}
+
+#sidebar.expanded .sidebar-logo-icon {
+  font-size: 1.25rem;
 }
 
 /* ===== About Section ===== */
@@ -1701,10 +1710,9 @@ tr:hover td { background: var(--bg-card-hover); }
   padding: 1rem;
 }
 
-.about-logo-img {
-  width: 100px;
-  height: 100px;
-  object-fit: contain;
+.about-logo-icon {
+  font-size: 5rem;
+  color: var(--primary);
 }
 
 .about-info h2 {

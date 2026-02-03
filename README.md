@@ -72,10 +72,18 @@ npm start
 ```
 
 Visit `http://localhost:3000` and login with the default credentials:
-- **Username:** JeffNasseri
-- **Password:** Jeff123!Nasseri123!
+- **Username:** admin
+- **Password:** admin
 
 > **Important:** Change the default password immediately after first login!
+
+You can customize the initial credentials by setting environment variables before first run:
+```bash
+export CAPITRACK_INIT_USERNAME=myuser
+export CAPITRACK_INIT_PASSWORD=mysecurepassword
+```
+
+See `.env.template` for all available configuration options.
 
 ## Configuration
 
@@ -182,6 +190,3 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **Issues:** [GitHub Issues](https://github.com/jeff-nasseri/Capitrack/issues)
 - **Discussions:** [GitHub Discussions](https://github.com/jeff-nasseri/Capitrack/discussions)
 
----
-
-Made with :heart: by [Jeff Nasseri](https://github.com/jeff-nasseri)
