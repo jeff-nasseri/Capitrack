@@ -33,7 +33,7 @@ Capitrack is an open-source, self-hosted application for tracking your investmen
 - **TypeScript** - Fully typed backend for reliability
 
 <p align="center">
-  <img src="src/static/images/dashboard-demo.png" alt="Dashboard" width="45%" />
+  <img src="src/static/images/dashboard-demo1.png" alt="Dashboard" width="45%" />
   <img src="src/static/images/dashboard-demo2.png" alt="Portfolio Analytics" width="45%" />
 </p>
 
