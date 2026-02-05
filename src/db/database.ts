@@ -118,17 +118,10 @@ function initializeSchema(database: Database.Database): void {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       title TEXT NOT NULL,
       target_amount REAL NOT NULL DEFAULT 0,
-      current_amount REAL DEFAULT 0,
-      currency TEXT DEFAULT 'EUR',
       target_date TEXT NOT NULL,
       description TEXT DEFAULT '',
       achieved INTEGER DEFAULT 0,
       category_id INTEGER DEFAULT NULL,
-      year INTEGER DEFAULT NULL,
-      quarter INTEGER DEFAULT NULL,
-      month INTEGER DEFAULT NULL,
-      week INTEGER DEFAULT NULL,
-      status TEXT DEFAULT 'not_started' CHECK(status IN ('not_started','in_progress','completed','on_hold','cancelled')),
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL
@@ -202,11 +195,6 @@ function initializeSchema(database: Database.Database): void {
   // Schema migrations for backwards compatibility
   const migrations = [
     { table: 'goals', column: 'category_id', sql: 'ALTER TABLE goals ADD COLUMN category_id INTEGER DEFAULT NULL REFERENCES categories(id) ON DELETE SET NULL' },
-    { table: 'goals', column: 'year', sql: 'ALTER TABLE goals ADD COLUMN year INTEGER DEFAULT NULL' },
-    { table: 'goals', column: 'quarter', sql: 'ALTER TABLE goals ADD COLUMN quarter INTEGER DEFAULT NULL' },
-    { table: 'goals', column: 'month', sql: 'ALTER TABLE goals ADD COLUMN month INTEGER DEFAULT NULL' },
-    { table: 'goals', column: 'week', sql: 'ALTER TABLE goals ADD COLUMN week INTEGER DEFAULT NULL' },
-    { table: 'goals', column: 'status', sql: "ALTER TABLE goals ADD COLUMN status TEXT DEFAULT 'not_started'" },
   ];
 
   for (const m of migrations) {
@@ -224,7 +212,6 @@ function initializeSchema(database: Database.Database): void {
   try {
     database.exec(`
       CREATE INDEX IF NOT EXISTS idx_goals_category ON goals(category_id);
-      CREATE INDEX IF NOT EXISTS idx_goals_year_quarter ON goals(year, quarter);
     `);
   } catch (e) {
     console.warn('Index creation skipped:', (e as Error).message);

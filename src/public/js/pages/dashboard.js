@@ -193,8 +193,9 @@ async function loadTopHoldings(container) {
 function renderDashboardGoals(goals) {
   const container = document.getElementById('goals-sidebar');
   if (!goals.length) { container.innerHTML = `<div class="empty-state" style="padding:0.5rem;font-size:0.8125rem;"><p>No goals set.</p></div>`; return; }
+  const currentWealth = state.dashboardSummary?.total_wealth || 0;
   container.innerHTML = goals.slice(0, 3).map(g => {
-    const progress = g.target_amount > 0 ? Math.min(100, (g.current_amount / g.target_amount) * 100) : 0;
+    const progress = g.target_amount > 0 ? Math.min(100, (currentWealth / g.target_amount) * 100) : 0;
     return `<div class="goal-mini"><h4>${esc(g.title)}</h4><div class="goal-mini-bar"><div class="goal-mini-fill" style="width:${progress}%"></div></div></div>`;
   }).join('');
 }

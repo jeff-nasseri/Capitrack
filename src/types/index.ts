@@ -66,17 +66,10 @@ export interface Goal {
   id: number;
   title: string;
   target_amount: number;
-  current_amount: number;
-  currency: string;
   target_date: string;
   description: string;
   achieved: number;
   category_id: number | null;
-  year: number | null;
-  quarter: number | null;
-  month: number | null;
-  week: number | null;
-  status: 'not_started' | 'in_progress' | 'completed' | 'on_hold' | 'cancelled';
   created_at: string;
   updated_at: string;
   tags?: Tag[];
@@ -163,37 +156,6 @@ export interface DashboardSummary {
   accounts: AccountSummary[];
 }
 
-// Goal progress types
-export interface WeekProgress {
-  week: number;
-  total: number;
-  completed: number;
-  progress: number;
-}
-
-export interface MonthProgress {
-  month: number;
-  total: number;
-  completed: number;
-  progress: number;
-  weeks: WeekProgress[];
-}
-
-export interface QuarterProgress {
-  quarter: number;
-  total: number;
-  completed: number;
-  progress: number;
-  months: MonthProgress[];
-}
-
-export interface YearProgress {
-  year: number;
-  total: number;
-  completed: number;
-  progress: number;
-  quarters: QuarterProgress[];
-}
 
 // CSV import types
 export type CSVFormat = 'revolut-stocks' | 'revolut-commodities' | 'trezor' | 'generic' | 'unknown';

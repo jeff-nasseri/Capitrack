@@ -172,9 +172,6 @@ function initEventListeners() {
   document.getElementById('password-form').addEventListener('submit', handlePasswordChange);
   document.getElementById('purge-btn').addEventListener('click', handlePurge);
 
-  // Goals year navigation
-  document.getElementById('goals-year-prev').addEventListener('click', () => { goalsYear--; document.getElementById('goals-year-label').textContent = goalsYear; loadGoals(); });
-  document.getElementById('goals-year-next').addEventListener('click', () => { goalsYear++; document.getElementById('goals-year-label').textContent = goalsYear; loadGoals(); });
 
   // Theme buttons
   document.querySelectorAll('.theme-option').forEach(btn => {
@@ -343,112 +340,45 @@ async function loadActivity() {
 }
 
 // ===== Goals Page =====
-let goalsYear = new Date().getFullYear();
-
 async function loadGoals() {
-  const monthNames = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-  const statusIcons = { not_started: 'fa-circle text-muted', in_progress: 'fa-spinner text-primary', completed: 'fa-check-circle text-success', on_hold: 'fa-pause-circle text-warning', cancelled: 'fa-times-circle text-danger' };
-
-  document.getElementById('goals-year-label').textContent = goalsYear;
+  const container = document.getElementById('goals-hierarchy');
+  container.innerHTML = '<div class="loading-spinner">Loading goals...</div>';
 
   try {
-    const [progress, goals] = await Promise.all([
-      API.get(`/api/goals/progress?year=${goalsYear}`),
-      API.get(`/api/goals?year=${goalsYear}`)
+    const [goals, summary] = await Promise.all([
+      API.get('/api/goals'),
+      API.get('/api/prices/dashboard/summary')
     ]);
 
-    // Year progress bar
-    const yearProgressEl = document.getElementById('goals-year-progress');
-    yearProgressEl.innerHTML = `
-      <div class="year-progress-card">
-        <div class="year-progress-header">
-          <h3>${goalsYear} Progress</h3>
-          <span class="year-progress-stats">${progress.completed}/${progress.total} completed</span>
-        </div>
-        <div class="goal-progress-bar year-bar"><div class="goal-progress-fill" style="width:${progress.progress}%"></div></div>
-        <div class="goal-progress-text"><span>${progress.progress}% complete</span></div>
-      </div>`;
+    const currentWealth = summary?.total_wealth || 0;
+    const baseCurrency = summary?.base_currency || 'EUR';
 
-    // Hierarchy
-    const hierarchyEl = document.getElementById('goals-hierarchy');
-    if (!progress.quarters.some(q => q.total > 0) && !goals?.length) {
-      hierarchyEl.innerHTML = `<div class="empty-state"><i class="fas fa-bullseye"></i><p>No goals for ${goalsYear}.</p></div>`;
+    if (!goals?.length) {
+      container.innerHTML = `<div class="empty-state"><i class="fas fa-bullseye"></i><p>No goals set. Click the + button to add a goal.</p></div>`;
       return;
     }
 
-    let html = '';
-    for (const q of progress.quarters) {
-      const qGoals = (goals || []).filter(g => g.quarter === q.quarter && !g.month);
-      html += `<div class="quarter-section">
-        <div class="quarter-header" onclick="this.parentElement.classList.toggle('collapsed')">
-          <div class="quarter-title"><i class="fas fa-chevron-down quarter-chevron"></i><h3>Q${q.quarter}</h3></div>
-          <div class="quarter-progress-info">
-            <span>${q.completed}/${q.total}</span>
-            <div class="mini-progress-bar"><div class="mini-progress-fill" style="width:${q.progress}%"></div></div>
-            <span>${q.progress}%</span>
-          </div>
-        </div>`;
-
-      // Quarter-level goals (no month)
-      if (qGoals.length) {
-        html += `<div class="quarter-goals">${qGoals.map(g => renderGoalCard(g, statusIcons)).join('')}</div>`;
-      }
-
-      // Months
-      for (const m of q.months) {
-        const mGoals = (goals || []).filter(g => g.quarter === q.quarter && g.month === m.month && !g.week);
-
-        html += `<div class="month-section">
-          <div class="month-header" onclick="this.parentElement.classList.toggle('collapsed')">
-            <div class="month-title"><i class="fas fa-chevron-down month-chevron"></i><h4>${monthNames[m.month]}</h4></div>
-            <div class="quarter-progress-info">
-              <span>${m.completed}/${m.total}</span>
-              <div class="mini-progress-bar"><div class="mini-progress-fill" style="width:${m.progress}%"></div></div>
-              <span>${m.progress}%</span>
-            </div>
-          </div>`;
-
-        // Month-level goals (no week)
-        if (mGoals.length) {
-          html += `<div class="month-goals">${mGoals.map(g => renderGoalCard(g, statusIcons)).join('')}</div>`;
-        }
-
-        // Weeks
-        for (const w of m.weeks) {
-          if (w.total === 0) continue;
-          const wGoals = (goals || []).filter(g => g.quarter === q.quarter && g.month === m.month && g.week === w.week);
-
-          html += `<div class="week-section">
-            <div class="week-header">
-              <h5>Week ${w.week}</h5>
-              <div class="quarter-progress-info">
-                <span>${w.completed}/${w.total}</span>
-                <div class="mini-progress-bar"><div class="mini-progress-fill" style="width:${w.progress}%"></div></div>
-                <span>${w.progress}%</span>
-              </div>
-            </div>
-            <div class="week-goals">${wGoals.map(g => renderGoalCard(g, statusIcons)).join('')}</div>
-          </div>`;
-        }
-
-        html += '</div>'; // close month-section
-      }
-
-      html += '</div>'; // close quarter-section
-    }
-
-    hierarchyEl.innerHTML = html;
+    const html = goals.map(g => renderGoalCard(g, currentWealth, baseCurrency)).join('');
+    container.innerHTML = `<div class="goals-list">${html}</div>`;
   } catch (e) { console.error('Goals error:', e); }
 }
 
-function renderGoalCard(g, statusIcons) {
-  const statusIcon = statusIcons[g.status] || statusIcons.not_started;
+function renderGoalCard(g, currentWealth, baseCurrency) {
+  const progress = g.target_amount > 0 ? Math.min(100, (currentWealth / g.target_amount) * 100) : 0;
   const tagBadges = (g.tags || []).map(t => `<span class="tag-badge" style="background:${t.color}20;color:${t.color}">${esc(t.name)}</span>`).join('');
-  return `<div class="goal-card-compact ${g.status === 'completed' || g.achieved ? 'achieved' : ''}">
+  const isAchieved = g.achieved || currentWealth >= g.target_amount;
+  const targetDateStr = g.target_date ? formatDate(g.target_date) : '';
+
+  return `<div class="goal-card-compact ${isAchieved ? 'achieved' : ''}" onclick="showEditGoalModal(${g.id})">
     <div class="goal-card-compact-header">
-      <i class="fas ${statusIcon}"></i>
+      <i class="fas ${isAchieved ? 'fa-check-circle text-success' : 'fa-bullseye text-primary'}"></i>
       <span class="goal-card-title">${esc(g.title)}</span>
-      <span class="goal-card-amount">${formatMoney(g.current_amount, g.currency)} / ${formatMoney(g.target_amount, g.currency)}</span>
+      <span class="goal-card-amount">${formatMoney(currentWealth, baseCurrency)} / ${formatMoney(g.target_amount, baseCurrency)}</span>
+    </div>
+    <div class="goal-progress-bar"><div class="goal-progress-fill" style="width:${progress}%"></div></div>
+    <div class="goal-card-footer">
+      <span class="goal-progress-text">${progress.toFixed(1)}% complete</span>
+      ${targetDateStr ? `<span class="goal-target-date"><i class="fas fa-calendar-alt"></i> ${targetDateStr}</span>` : ''}
     </div>
     ${tagBadges ? `<div class="goal-card-tags">${tagBadges}</div>` : ''}
   </div>`;

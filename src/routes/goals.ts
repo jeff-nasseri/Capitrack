@@ -1,6 +1,6 @@
 import express, { Response } from 'express';
 import db from '../db/database';
-import { AuthenticatedRequest, Goal, Tag, YearProgress, QuarterProgress, MonthProgress, WeekProgress } from '../types';
+import { AuthenticatedRequest, Goal, Tag } from '../types';
 
 const router = express.Router();
 
@@ -23,18 +23,13 @@ function syncGoalTags(goalId: number | bigint, tagIds: number[] | undefined): vo
 }
 
 router.get('/', (req: AuthenticatedRequest, res: Response): void => {
-  const { year, quarter, month, week, category_id, tag_id, status } = req.query;
+  const { category_id, tag_id } = req.query;
   let sql = 'SELECT * FROM goals WHERE 1=1';
   const params: (string | number)[] = [];
 
-  if (year) { sql += ' AND year = ?'; params.push(parseInt(year as string)); }
-  if (quarter) { sql += ' AND quarter = ?'; params.push(parseInt(quarter as string)); }
-  if (month) { sql += ' AND month = ?'; params.push(parseInt(month as string)); }
-  if (week) { sql += ' AND week = ?'; params.push(parseInt(week as string)); }
   if (category_id) { sql += ' AND category_id = ?'; params.push(parseInt(category_id as string)); }
-  if (status) { sql += ' AND status = ?'; params.push(status as string); }
 
-  sql += ' ORDER BY year ASC, quarter ASC, month ASC, week ASC, target_date ASC';
+  sql += ' ORDER BY target_date ASC';
 
   let goals = db.prepare(sql).all(...params) as Goal[];
 
@@ -47,52 +42,6 @@ router.get('/', (req: AuthenticatedRequest, res: Response): void => {
   res.json(goalsWithTags);
 });
 
-router.get('/progress', (req: AuthenticatedRequest, res: Response): void => {
-  const { year } = req.query;
-  const currentYear = year ? parseInt(year as string) : new Date().getFullYear();
-
-  const yearGoals = db.prepare('SELECT * FROM goals WHERE year = ?').all(currentYear) as Goal[];
-  const yearTotal = yearGoals.length;
-  const yearCompleted = yearGoals.filter(g => g.status === 'completed' || g.achieved).length;
-
-  const quarters: QuarterProgress[] = [];
-  for (let q = 1; q <= 4; q++) {
-    const qGoals = yearGoals.filter(g => g.quarter === q);
-    const qTotal = qGoals.length;
-    const qCompleted = qGoals.filter(g => g.status === 'completed' || g.achieved).length;
-
-    const months: MonthProgress[] = [];
-    const startMonth = (q - 1) * 3 + 1;
-    for (let m = startMonth; m < startMonth + 3; m++) {
-      const mGoals = qGoals.filter(g => g.month === m);
-      const mTotal = mGoals.length;
-      const mCompleted = mGoals.filter(g => g.status === 'completed' || g.achieved).length;
-
-      const weeks: WeekProgress[] = [];
-      for (let w = 1; w <= 4; w++) {
-        const wGoals = mGoals.filter(g => g.week === w);
-        const wTotal = wGoals.length;
-        const wCompleted = wGoals.filter(g => g.status === 'completed' || g.achieved).length;
-        weeks.push({ week: w, total: wTotal, completed: wCompleted, progress: wTotal > 0 ? Math.round((wCompleted / wTotal) * 100) : 0 });
-      }
-
-      months.push({ month: m, total: mTotal, completed: mCompleted, progress: mTotal > 0 ? Math.round((mCompleted / mTotal) * 100) : 0, weeks });
-    }
-
-    quarters.push({ quarter: q, total: qTotal, completed: qCompleted, progress: qTotal > 0 ? Math.round((qCompleted / qTotal) * 100) : 0, months });
-  }
-
-  const result: YearProgress = {
-    year: currentYear,
-    total: yearTotal,
-    completed: yearCompleted,
-    progress: yearTotal > 0 ? Math.round((yearCompleted / yearTotal) * 100) : 0,
-    quarters
-  };
-
-  res.json(result);
-});
-
 router.get('/:id', (req: AuthenticatedRequest, res: Response): void => {
   const goal = db.prepare('SELECT * FROM goals WHERE id = ?').get(req.params.id) as Goal | undefined;
   if (!goal) {
@@ -103,28 +52,21 @@ router.get('/:id', (req: AuthenticatedRequest, res: Response): void => {
 });
 
 router.post('/', (req: AuthenticatedRequest, res: Response): void => {
-  const { title, target_amount, current_amount, currency, target_date, description, category_id, year, quarter, month, week, status, tag_ids } = req.body;
+  const { title, target_amount, target_date, description, category_id, tag_ids } = req.body;
   if (!title || !target_date) {
     res.status(400).json({ error: 'Title and target date required' });
     return;
   }
 
   const result = db.prepare(`
-    INSERT INTO goals (title, target_amount, current_amount, currency, target_date, description, category_id, year, quarter, month, week, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO goals (title, target_amount, target_date, description, category_id)
+    VALUES (?, ?, ?, ?, ?)
   `).run(
     title,
     target_amount || 0,
-    current_amount || 0,
-    currency || 'EUR',
     target_date,
     description || '',
-    category_id || null,
-    year || null,
-    quarter || null,
-    month || null,
-    week || null,
-    status || 'not_started'
+    category_id || null
   );
 
   const goalId = result.lastInsertRowid;
@@ -141,25 +83,18 @@ router.put('/:id', (req: AuthenticatedRequest, res: Response): void => {
     return;
   }
 
-  const { title, target_amount, current_amount, currency, target_date, description, achieved, category_id, year, quarter, month, week, status, tag_ids } = req.body;
+  const { title, target_amount, target_date, description, achieved, category_id, tag_ids } = req.body;
 
   db.prepare(`
-    UPDATE goals SET title = ?, target_amount = ?, current_amount = ?, currency = ?, target_date = ?, description = ?, achieved = ?, category_id = ?, year = ?, quarter = ?, month = ?, week = ?, status = ?, updated_at = CURRENT_TIMESTAMP
+    UPDATE goals SET title = ?, target_amount = ?, target_date = ?, description = ?, achieved = ?, category_id = ?, updated_at = CURRENT_TIMESTAMP
     WHERE id = ?
   `).run(
     title || existing.title,
     target_amount !== undefined ? target_amount : existing.target_amount,
-    current_amount !== undefined ? current_amount : existing.current_amount,
-    currency || existing.currency,
     target_date || existing.target_date,
     description !== undefined ? description : existing.description,
     achieved !== undefined ? (achieved ? 1 : 0) : existing.achieved,
     category_id !== undefined ? (category_id || null) : existing.category_id,
-    year !== undefined ? year : existing.year,
-    quarter !== undefined ? quarter : existing.quarter,
-    month !== undefined ? month : existing.month,
-    week !== undefined ? week : existing.week,
-    status || existing.status,
     req.params.id
   );
 
