@@ -30,7 +30,6 @@ Capitrack is an open-source, self-hosted application for tracking your investmen
 - **Currency Conversion** - Support for multiple currencies with conversion rates
 - **Dark/Light Themes** - Beautiful UI that works in any lighting
 - **Self-Hosted** - Your data stays on your server
-- **TypeScript** - Fully typed backend for reliability
 
 <p align="center">
   <img src="src/static/images/dashboard-demo1.png" alt="Dashboard" width="45%" />
@@ -200,4 +199,3 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - **Issues:** [GitHub Issues](https://github.com/jeff-nasseri/Capitrack/issues)
 - **Discussions:** [GitHub Discussions](https://github.com/jeff-nasseri/Capitrack/discussions)
-

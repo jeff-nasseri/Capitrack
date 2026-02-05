@@ -8,6 +8,7 @@ module.exports = {
   },
   moduleNameMapper: {
     '^../src/(.*)$': '<rootDir>/src/$1',
+    '^better-sqlite3$': '<rootDir>/tests/__mocks__/better-sqlite3.js',
   },
   transformIgnorePatterns: [
     '/node_modules/',
@@ -17,4 +18,6 @@ module.exports = {
     '!src/public/**',
   ],
   testTimeout: 30000,
+  globalSetup: '<rootDir>/tests/setup.js',
+  setupFilesAfterEnv: ['<rootDir>/tests/setupAfterEnv.js'],
 };

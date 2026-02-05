@@ -58,11 +58,11 @@ const { importCSV, detectFormat } = require('../src/services/importer');
 
 describe('Format Detection', () => {
   test('detects Revolut Stock format', () => {
-    expect(detectFormat(['Date', 'Ticker', 'Type', 'Quantity', 'Price per share', 'Total Amount', 'Currency', 'FX Rate'])).toBe('revolut-stock');
+    expect(detectFormat(['Date', 'Ticker', 'Type', 'Quantity', 'Price per share', 'Total Amount', 'Currency', 'FX Rate'])).toBe('revolut-stocks');
   });
 
   test('detects Revolut Commodity format', () => {
-    expect(detectFormat(['Type', 'Product', 'Started Date', 'Completed Date', 'Description', 'Amount', 'Currency', 'State', 'Fee'])).toBe('revolut-commodity');
+    expect(detectFormat(['Type', 'Product', 'Started Date', 'Completed Date', 'Description', 'Amount', 'Currency', 'State', 'Fee'])).toBe('revolut-commodities');
   });
 
   test('detects Trezor format', () => {
@@ -78,7 +78,7 @@ describe('Format Detection', () => {
   });
 
   test('detection is case-insensitive', () => {
-    expect(detectFormat(['TICKER', 'PRICE PER SHARE', 'date'])).toBe('revolut-stock');
+    expect(detectFormat(['TICKER', 'PRICE PER SHARE', 'date'])).toBe('revolut-stocks');
   });
 });
 
@@ -95,7 +95,7 @@ describe('Revolut Stock Import', () => {
 
   test('imports buy/sell/dividend, skips CASH TOP-UP', () => {
     const result = importCSV(revolutStockCSV, 1);
-    expect(result.format).toBe('revolut-stock');
+    expect(result.format).toBe('revolut-stocks');
     expect(result.imported).toBe(3);
     expect(result.skipped).toBe(0);
   });
@@ -162,7 +162,7 @@ EXCHANGE,Gold,2024-03-01 09:00:00,,Pending exchange,0.1,XAU,PENDING,0`;
 
   test('imports completed commodity trades, skips pending', () => {
     const result = importCSV(commodityCSV, 1);
-    expect(result.format).toBe('revolut-commodity');
+    expect(result.format).toBe('revolut-commodities');
     expect(result.imported).toBe(2);
   });
 
