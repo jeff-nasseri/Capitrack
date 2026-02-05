@@ -38,26 +38,13 @@ export function getAccountFormData() {
 
 // ===== Goal Form =====
 export function goalFormHtml(g = {}, tags = []) {
-  const monthNames = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-  const currentYear = new Date().getFullYear();
-
   const tagCheckboxes = tags.map(t =>
     `<label class="tag-checkbox" style="--tag-color:${t.color}"><input type="checkbox" value="${t.id}" ${(g.tags || []).some(gt => gt.id === t.id) ? 'checked' : ''}><span class="tag-chip">${esc(t.name)}</span></label>`
   ).join('');
 
   return `<form id="modal-form">
     <div class="form-group"><label>Title</label><input type="text" id="f-title" value="${esc(g.title || '')}" required></div>
-    <div class="form-row"><div class="form-group"><label>Target Amount</label><input type="number" id="f-target" value="${g.target_amount || ''}" step="any" min="0" required></div><div class="form-group"><label>Current Amount</label><input type="number" id="f-current" value="${g.current_amount || 0}" step="any" min="0"></div></div>
-    <div class="form-row"><div class="form-group"><label>Currency</label><input type="text" id="f-goal-currency" value="${esc(g.currency || 'EUR')}" maxlength="5"></div><div class="form-group"><label>Target Date</label><input type="date" id="f-target-date" value="${g.target_date ? g.target_date.split('T')[0] : ''}" required></div></div>
-    <div class="form-row">
-      <div class="form-group"><label>Year</label><input type="number" id="f-year" value="${g.year || currentYear}" min="2020" max="2050"></div>
-      <div class="form-group"><label>Quarter</label><select id="f-quarter"><option value="">--</option>${[1,2,3,4].map(q => `<option value="${q}" ${g.quarter === q ? 'selected' : ''}>Q${q}</option>`).join('')}</select></div>
-    </div>
-    <div class="form-row">
-      <div class="form-group"><label>Month</label><select id="f-month"><option value="">--</option>${[1,2,3,4,5,6,7,8,9,10,11,12].map(m => `<option value="${m}" ${g.month === m ? 'selected' : ''}>${monthNames[m]}</option>`).join('')}</select></div>
-      <div class="form-group"><label>Week</label><select id="f-week"><option value="">--</option>${[1,2,3,4].map(w => `<option value="${w}" ${g.week === w ? 'selected' : ''}>Week ${w}</option>`).join('')}</select></div>
-    </div>
-    <div class="form-group"><label>Status</label><select id="f-status">${['not_started','in_progress','completed','on_hold','cancelled'].map(s => `<option value="${s}" ${(g.status || 'not_started') === s ? 'selected' : ''}>${s.replace(/_/g, ' ')}</option>`).join('')}</select></div>
+    <div class="form-row"><div class="form-group"><label>Target Amount</label><input type="number" id="f-target" value="${g.target_amount || ''}" step="any" min="0" required></div><div class="form-group"><label>Target Date</label><input type="date" id="f-target-date" value="${g.target_date ? g.target_date.split('T')[0] : ''}" required></div></div>
     ${tags.length ? `<div class="form-group"><label>Tags</label><div class="tag-checkboxes" id="f-tags">${tagCheckboxes}</div></div>` : ''}
     <div class="form-group"><label>Description</label><textarea id="f-goal-desc" rows="2">${esc(g.description || '')}</textarea></div>
     ${g.id ? `<div class="form-group"><label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;"><input type="checkbox" id="f-achieved" ${g.achieved ? 'checked' : ''} style="width:auto;"> Mark as achieved</label></div>` : ''}
@@ -68,15 +55,8 @@ export function getGoalFormData() {
   const data = {
     title: document.getElementById('f-title').value,
     target_amount: parseFloat(document.getElementById('f-target').value),
-    current_amount: parseFloat(document.getElementById('f-current').value) || 0,
-    currency: document.getElementById('f-goal-currency').value.toUpperCase(),
     target_date: document.getElementById('f-target-date').value,
-    description: document.getElementById('f-goal-desc').value,
-    year: parseInt(document.getElementById('f-year').value) || null,
-    quarter: parseInt(document.getElementById('f-quarter').value) || null,
-    month: parseInt(document.getElementById('f-month').value) || null,
-    week: parseInt(document.getElementById('f-week').value) || null,
-    status: document.getElementById('f-status').value
+    description: document.getElementById('f-goal-desc').value
   };
 
   const tagCheckboxes = document.querySelectorAll('#f-tags input[type="checkbox"]:checked');
