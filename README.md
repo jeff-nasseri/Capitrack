@@ -176,13 +176,6 @@ Capitrack provides a RESTful API for all operations:
 
 See the [API documentation](docs/api.md) for full details.
 
-## Tech Stack
-
-- **Backend:** Node.js, Express, TypeScript
-- **Database:** SQLite with better-sqlite3
-- **Frontend:** Vanilla JavaScript, CSS3, Chart.js
-- **Price Data:** Yahoo Finance API
-
 ## Contributing
 
 We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
