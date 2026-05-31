@@ -1,0 +1,23 @@
+@implements IDisposable
+@inject ModalService Modal
+
+@if (Modal.IsOpen)
+{
+    <div class="modal-overlay" @onclick="Modal.Close">
+        <div class="modal" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h3>@Modal.Title</h3>
+                <button class="btn-icon" @onclick="Modal.Close"><Icon Name="x" /></button>
+            </div>
+            <div class="modal-body">
+                @Modal.Body
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    protected override void OnInitialized() => Modal.OnChange += Refresh;
+    private void Refresh() => InvokeAsync(StateHasChanged);
+    public void Dispose() => Modal.OnChange -= Refresh;
+}

@@ -1,0 +1,25 @@
+<span class="chip @_cls">@_label</span>
+
+@code {
+    [Parameter] public string Type { get; set; } = "buy";
+
+    private string _label = "";
+    private string _cls = "";
+
+    private static readonly Dictionary<string, (string Label, string Cls)> Map = new()
+    {
+        ["buy"] = ("Buy", "up"),
+        ["sell"] = ("Sell", "down"),
+        ["dividend"] = ("Dividend", "pri"),
+        ["transfer_in"] = ("Transfer In", "pri"),
+        ["transfer_out"] = ("Transfer Out", "warn"),
+        ["interest"] = ("Interest", "pri"),
+        ["fee"] = ("Fee", "warn"),
+    };
+
+    protected override void OnParametersSet()
+    {
+        if (Map.TryGetValue(Type, out var v)) { _label = v.Label; _cls = v.Cls; }
+        else { _label = Type; _cls = ""; }
+    }
+}

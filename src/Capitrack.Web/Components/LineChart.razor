@@ -1,0 +1,38 @@
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+@inject SettingsStore Settings
+
+<canvas id="@CanvasId"></canvas>
+
+@code {
+    [Parameter] public string CanvasId { get; set; } = "chart";
+    [Parameter] public IReadOnlyList<ChartPoint>? Data { get; set; }
+    [Parameter] public int Height { get; set; } = 200;
+    [Parameter] public IReadOnlyList<TransactionDto>? Transactions { get; set; }
+
+    private bool _needsRender = true;
+
+    protected override void OnParametersSet() => _needsRender = true;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_needsRender) return;
+        _needsRender = false;
+        await Render();
+    }
+
+    private async Task Render()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("capitrackCharts.renderLineChart",
+                CanvasId, Data ?? [], Height, Transactions ?? [], Settings.ShowTransactionDots);
+        }
+        catch { /* canvas may not be in DOM yet */ }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try { await JS.InvokeVoidAsync("capitrackCharts.destroy", CanvasId); } catch { }
+    }
+}

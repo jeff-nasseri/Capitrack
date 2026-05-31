@@ -1,0 +1,69 @@
+@inject NavigationManager Nav
+
+@if (Holdings is null || Holdings.Count == 0)
+{
+    <div class="empty-state"><Icon Name="holdings" /><p>No holdings yet. Add transactions to see your portfolio.</p></div>
+}
+else
+{
+    <div class="card" style="overflow:hidden;">
+        <div style="overflow-x:auto;">
+            <table class="tbl">
+                <thead>
+                    <tr>
+                        <th style="padding-top:16px;">Position</th>
+                        <th class="r" style="padding-top:16px;">Shares</th>
+                        <th class="r" style="padding-top:16px;">Today's Price</th>
+                        @if (ShowSpark)
+                        {
+                            <th class="r" style="padding-top:16px;">Trend</th>
+                        }
+                        <th class="r" style="padding-top:16px;">Total Value</th>
+                        <th class="r" style="padding-top:16px;">Total Gain / Loss</th>
+                        <th style="width:30px;"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var h in Holdings)
+                    {
+                        <tr @onclick="() => OpenSymbol(h)">
+                            <td>
+                                <div class="flex gap-3">
+                                    <Coin Sym="@h.Symbol" Size="sm" />
+                                    <div><div style="font-weight:650;">@h.Symbol</div><div class="sub">@h.Name</div></div>
+                                </div>
+                            </td>
+                            <td class="r num">@Format.Shares(h.Quantity)</td>
+                            <td class="r">
+                                <div class="num" style="font-weight:600;">@Format.Money(h.Price, h.Currency)</div>
+                                <div class="delta @(h.ChangePercent >= 0 ? "up" : "down")" style="font-size:0.76rem;">@Format.Pct(h.ChangePercent)</div>
+                            </td>
+                            @if (ShowSpark)
+                            {
+                                <td class="r"><div style="display:inline-block;"><Sparkline Data="Series.HoldingSeries(h.Symbol, h.Price, h.GainPct)" Up="@(h.GainPct >= 0)" W="84" H="28" /></div></td>
+                            }
+                            <td class="r"><div class="num" style="font-weight:700;">@Format.Money(h.MarketValue, h.Currency)</div><div class="sub">@h.Currency</div></td>
+                            <td class="r">
+                                <div class="delta @(h.Gain >= 0 ? "up" : "down")" style="font-weight:700;">@Format.Signed(h.Gain, h.Currency)</div>
+                                <div class="delta @(h.Gain >= 0 ? "up" : "down")" style="font-size:0.76rem;">@Format.Pct(h.GainPct)</div>
+                            </td>
+                            <td><Icon Name="chevR" Width="15" Height="15" Style="color:var(--text-4);" /></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public IReadOnlyList<EnrichedHolding>? Holdings { get; set; }
+    [Parameter] public int? AccountId { get; set; }
+    [Parameter] public bool ShowSpark { get; set; } = true;
+
+    private void OpenSymbol(EnrichedHolding h)
+    {
+        var acct = AccountId ?? h.AccountId;
+        Nav.NavigateTo($"/accounts/{acct}/{Uri.EscapeDataString(h.Symbol)}");
+    }
+}

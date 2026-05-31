@@ -1,0 +1,30 @@
+<div>
+    <AreaChart Data="@Data" Currency="@Currency" Height="@Height" Labels="@Labels" Stroke="@Stroke" />
+    <div class="flex" style="justify-content:center;gap:2px;margin-top:10px;">
+        <div class="pill-toggle">
+            @foreach (var p in Periods)
+            {
+                <button class="@(p == Selected ? "active" : "")" @onclick="() => Change(p)">@p.ToUpperInvariant()</button>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public IReadOnlyList<double>? Data { get; set; }
+    [Parameter] public IReadOnlyList<string>? Labels { get; set; }
+    [Parameter] public string? Currency { get; set; } = "USD";
+    [Parameter] public int Height { get; set; } = 230;
+    [Parameter] public string Stroke { get; set; } = "var(--pri-2)";
+    [Parameter] public string Selected { get; set; } = "3m";
+    [Parameter] public EventCallback<string> SelectedChanged { get; set; }
+
+    private static readonly string[] Periods = ["1w", "1m", "3m", "6m", "ytd", "1y", "5y", "all"];
+
+    private async Task Change(string p)
+    {
+        if (p == Selected) return;
+        Selected = p;
+        await SelectedChanged.InvokeAsync(p);
+    }
+}

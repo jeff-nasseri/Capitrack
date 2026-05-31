@@ -1,0 +1,13 @@
+<div class="coin @SizeClass" style="background: linear-gradient(145deg, @_color, @Services.Coins.Shade(_color, -18))">@_text</div>
+
+@code {
+    [Parameter] public string Sym { get; set; } = "";
+    [Parameter] public string Size { get; set; } = "md";
+
+    private string _color = "#6366f1";
+    private string _text = "";
+
+    private string SizeClass => Size == "sm" ? "coin-sm" : Size == "lg" ? "coin-lg" : "";
+
+    protected override void OnParametersSet() => (_color, _text) = Services.Coins.For(Sym);
+}

@@ -1,0 +1,334 @@
+@page "/"
+@implements IDisposable
+@inject ApiClient Api
+@inject AppState State
+@inject TopBarState TopBar
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<div class="page page-wide">
+    @* hero *@
+    <div class="card" style="overflow:hidden;">
+        <div class="card-pad" style="padding-bottom:6px;">
+            <div class="row-between" style="align-items:flex-start;">
+                <div>
+                    <div class="eyebrow">Total net worth</div>
+                    <div class="bignum" style="margin-top:6px;">@Format.Money(_net, _base)</div>
+                    <div class="flex gap-2" style="margin-top:8px;">
+                        <span class="chip @(_gain >= 0 ? "up" : "down")">@Format.Signed(_gain, _base) · @Format.Pct(_gp)</span>
+                        <span class="sub">@_periodLabel</span>
+                        <button class="btn-icon btn-sm" style="width:28px;height:28px;" title="Refresh" @onclick="Reload">
+                            <Icon Name="refresh" Width="14" Height="14" Class="@(_busy ? "spinning" : null)" />
+                        </button>
+                    </div>
+                </div>
+                <span class="sub tnum" style="display:inline-flex;align-items:center;gap:6px;white-space:nowrap;"><Icon Name="clock" Width="14" Height="14" /> @_clock</span>
+            </div>
+        </div>
+        <div style="padding:4px 12px 16px;">
+            <PeriodChart Data="_chart" Labels="_labels" Currency="@_base" Height="250" Selected="@_period" SelectedChanged="OnPeriod" />
+        </div>
+    </div>
+
+    @* KPI strip *@
+    <div class="grid mt-4" style="grid-template-columns:repeat(3, 1fr) 1.15fr;">
+        <StatCard Label="Invested" Value="@Format.Money(_invested, _base)" Spark="Series.Make(2, 24, _invested * 0.7, _invested <= 0 ? 1 : _invested, 0.02)" SparkUp="true" />
+        <StatCard Label="Total return" Value="@Format.Signed(_gain, _base)" Delta="@Format.Pct(_gp)" DeltaUp="@(_gain >= 0)" Spark="Series.Make(9, 24, 0, _gain == 0 ? 1 : _gain, 0.05)" SparkUp="@(_gain >= 0)" />
+        <StatCard Label="Today" Value="@Format.Signed(_today, _base)" Delta="@Format.Pct(_todayPct)" DeltaUp="@(_today >= 0)" Spark="Series.Make(14, 24, 0, _today == 0 ? 1 : _today, 0.2)" SparkUp="@(_today >= 0)" />
+        <div class="card card-pad">
+            <div class="row-between">
+                <div class="eyebrow">Allocation</div>
+                <span class="sub">@_accounts.Count account@(_accounts.Count != 1 ? "s" : "")</span>
+            </div>
+            <div class="flex gap-4" style="margin-top:6px;">
+                <Donut Segments="_alloc" Size="84" Thickness="13" />
+                <div class="flex-col gap-2" style="flex:1;">
+                    @foreach (var a in _allocLegend)
+                    {
+                        <div class="flex row-between" style="font-size:0.82rem;">
+                            <span class="flex gap-2"><i style="width:9px;height:9px;border-radius:3px;background:@a.Color;"></i> @a.Label</span>
+                            <b class="tnum">@a.Pct%</b>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* two columns *@
+    <div class="grid mt-4" style="grid-template-columns:1fr 1fr;align-items:start;">
+        @* accounts *@
+        <div class="card card-pad">
+            <div class="row-between" style="margin-bottom:6px;">
+                <span class="section-title">Accounts</span>
+                <button class="link-btn" @onclick='() => Nav.NavigateTo("/accounts")'>View all <Icon Name="chevR" Width="13" Height="13" /></button>
+            </div>
+            @if (_accounts.Count == 0)
+            {
+                <div class="empty-state"><Icon Name="wallet" /><p>No accounts yet.</p></div>
+            }
+            @for (var i = 0; i < _accounts.Count; i++)
+            {
+                var a = _accounts[i];
+                var sa = _summaryByAccount.GetValueOrDefault(a.Id);
+                var value = sa?.MarketValue ?? 0;
+                var cost = sa?.CostBasis ?? 0;
+                var gp = cost > 0 ? (value - cost) / cost * 100 : 0;
+                var hc = sa?.HoldingsCount ?? 0;
+                <div class="flex gap-3" style="padding:12px 0;border-top:@(i > 0 ? "1px solid var(--hairline)" : "none");cursor:pointer;" @onclick="() => OpenAccount(a.Id)">
+                    <div class="coin" style="border-radius:10px;background:linear-gradient(145deg, @a.Color, @Services.Coins.Shade(a.Color, -20));"><Icon Name="@AcctIcon(a.Icon)" Width="18" Height="18" /></div>
+                    <div style="flex:1;min-width:0;">
+                        <div style="font-weight:650;font-size:0.92rem;">@a.Name</div>
+                        <div class="sub">@a.Currency · @hc holding@(hc != 1 ? "s" : "")</div>
+                    </div>
+                    <Sparkline Data="Series.AccountSeries(a.Id, cost, value)" Up="@(gp >= 0)" W="70" H="26" />
+                    <div style="text-align:right;min-width:96px;">
+                        <div class="tnum" style="font-weight:700;font-size:0.95rem;">@Format.Money(value, a.Currency)</div>
+                        <div class="delta @(gp >= 0 ? "up" : "down")" style="font-size:0.78rem;">@Format.Pct(gp, 1)</div>
+                    </div>
+                    <Icon Name="chevR" Width="15" Height="15" Style="color:var(--text-4);" />
+                </div>
+            }
+        </div>
+
+        @* right column *@
+        <div class="flex-col gap-4">
+            <div class="card card-pad">
+                <div class="row-between" style="margin-bottom:6px;">
+                    <span class="section-title">Top holdings</span>
+                    <button class="link-btn" @onclick='() => Nav.NavigateTo("/holdings")'>View all <Icon Name="chevR" Width="13" Height="13" /></button>
+                </div>
+                @if (_holdings is null)
+                {
+                    <div class="loading-spinner">Loading holdings…</div>
+                }
+                else if (_holdings.Count == 0)
+                {
+                    <div class="empty-state"><Icon Name="holdings" /><p>No holdings yet.</p></div>
+                }
+                else
+                {
+                    @for (var i = 0; i < Math.Min(5, _holdings.Count); i++)
+                    {
+                        var h = _holdings[i];
+                        <div class="flex gap-3" style="padding:10px 0;border-top:@(i > 0 ? "1px solid var(--hairline)" : "none");cursor:pointer;" @onclick="() => OpenSymbol(h)">
+                            <Coin Sym="@h.Symbol" Size="sm" />
+                            <div style="flex:1;min-width:0;">
+                                <div style="font-weight:650;font-size:0.88rem;">@h.Symbol</div>
+                                <div class="sub tnum">@Format.Shares(h.Quantity) shares</div>
+                            </div>
+                            <div style="text-align:right;">
+                                <div class="tnum" style="font-weight:700;font-size:0.9rem;">@Format.Money(h.MarketValue, h.Currency)</div>
+                                <div class="delta @(h.Gain >= 0 ? "up" : "down")" style="font-size:0.76rem;">@Format.Signed(h.Gain, h.Currency, 0) · @Format.Pct(h.GainPct, 1)</div>
+                            </div>
+                        </div>
+                    }
+                    @if (_holdings.Count > 5)
+                    {
+                        <div class="flex gap-2" style="padding-top:12px;margin-top:4px;border-top:1px solid var(--hairline);cursor:pointer;" @onclick='() => Nav.NavigateTo("/holdings")'>
+                            <div class="flex" style="margin-right:2px;">
+                                @for (var i = 5; i < Math.Min(9, _holdings.Count); i++)
+                                {
+                                    <div style="margin-left:@(i > 5 ? "-8px" : "0");border:2px solid var(--surface);border-radius:50%;"><Coin Sym="@_holdings[i].Symbol" Size="sm" /></div>
+                                }
+                            </div>
+                            <span class="sub">+@(_holdings.Count - 5) more holdings</span>
+                        </div>
+                    }
+                }
+            </div>
+
+            <div class="card card-pad">
+                <div class="row-between" style="margin-bottom:12px;">
+                    <span class="section-title">Saving goals</span>
+                    <button class="link-btn" @onclick='() => Nav.NavigateTo("/goals")'>View all <Icon Name="chevR" Width="13" Height="13" /></button>
+                </div>
+                @if (_goals.Count == 0)
+                {
+                    <div class="empty-state" style="padding:18px;"><Icon Name="goals" /><p>No goals set.</p></div>
+                }
+                @foreach (var g in _goals.Take(2))
+                {
+                    var pct = g.TargetAmount > 0 ? Math.Min(100, _net / g.TargetAmount * 100) : 0;
+                    <div style="margin-bottom:14px;">
+                        <div class="row-between" style="margin-bottom:7px;">
+                            <span style="font-weight:600;font-size:0.88rem;">@g.Title</span>
+                            <span class="sub tnum">@Format.Money(_net, _base, 0) / @Format.Money(g.TargetAmount, _base, 0)</span>
+                        </div>
+                        <div class="bar"><i style="width:@pct.ToString("0.##")%;"></i></div>
+                        <div class="sub" style="margin-top:5px;">@pct.ToString("0.#")% complete · @Format.Date(g.TargetDate)</div>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private record Legend(string Label, string Color, int Pct);
+
+    private static readonly Dictionary<string, string> PeriodLabels = new()
+    {
+        ["1w"] = "last week", ["1m"] = "last month", ["3m"] = "last 3 months", ["6m"] = "last 6 months",
+        ["ytd"] = "year to date", ["1y"] = "last year", ["5y"] = "last 5 years", ["all"] = "all time"
+    };
+
+    private double _net, _gain, _gp, _invested, _today, _todayPct;
+    private string _base = "USD";
+    private List<AccountDto> _accounts = [];
+    private Dictionary<int, AccountSummaryDto> _summaryByAccount = [];
+    private List<GoalDto> _goals = [];
+    private List<EnrichedHolding>? _holdings;
+    private List<Donut.DonutSegment> _alloc = [];
+    private List<Legend> _allocLegend = [];
+    private List<double> _chart = [];
+    private List<string> _labels = [];
+    private string _period = "3m";
+    private string _periodLabel = "last 3 months";
+    private string _clock = "";
+    private bool _busy;
+    private Timer? _clockTimer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        TopBar.Set("Dashboard");
+        await StartClock();
+        await Reload();
+    }
+
+    private async Task Reload()
+    {
+        _busy = true;
+        var summaryTask = Api.GetAsync<DashboardSummaryDto>("/api/prices/dashboard/summary");
+        var accountsTask = Api.GetAsync<List<AccountDto>>("/api/accounts");
+        var goalsTask = Api.GetAsync<List<GoalDto>>("/api/goals");
+        var ratesTask = Api.GetAsync<List<CurrencyRateDto>>("/api/currencies");
+        await Task.WhenAll(summaryTask, accountsTask, goalsTask, ratesTask);
+
+        var summary = await summaryTask;
+        _accounts = await accountsTask ?? [];
+        _goals = await goalsTask ?? [];
+        var rates = BuildRates(await ratesTask ?? []);
+        State.Accounts = _accounts;
+        State.DashboardSummary = summary;
+
+        if (summary is not null)
+        {
+            _base = summary.BaseCurrency ?? "USD";
+            _net = summary.TotalWealth;
+            _gain = summary.TotalGain;
+            _gp = summary.TotalGainPercent;
+            _invested = summary.TotalCost;
+            _summaryByAccount = summary.Accounts.ToDictionary(a => a.AccountId);
+            BuildAllocation(summary);
+        }
+        StateHasChanged();
+
+        await LoadChart(_period);
+        await LoadHoldings(rates);
+        _busy = false;
+        StateHasChanged();
+        _ = Api.PostAsync<object>("/api/prices/daily-wealth", new { });
+    }
+
+    private void BuildAllocation(DashboardSummaryDto summary)
+    {
+        var colorByAccount = _accounts.ToDictionary(a => a.Id, a => a.Color);
+        var total = summary.Accounts.Sum(a => a.MarketValue);
+        _alloc = [];
+        _allocLegend = [];
+        foreach (var a in summary.Accounts.OrderByDescending(a => a.MarketValue))
+        {
+            var color = colorByAccount.GetValueOrDefault(a.AccountId, "#6366f1");
+            _alloc.Add(new Donut.DonutSegment(a.MarketValue, color));
+            _allocLegend.Add(new Legend(a.AccountName, color, total > 0 ? (int)Math.Round(a.MarketValue / total * 100) : 0));
+        }
+    }
+
+    private async Task LoadChart(string period)
+    {
+        _period = period;
+        _periodLabel = PeriodLabels.GetValueOrDefault(period, "");
+        var data = await Api.GetAsync<List<PortfolioHistoryPointDto>>($"/api/prices/portfolio/history?period={period}") ?? [];
+        _chart = data.Select(p => p.Value).ToList();
+        _labels = BuildLabels(data.Select(p => p.Date).ToList());
+        StateHasChanged();
+    }
+
+    private async Task OnPeriod(string p) => await LoadChart(p);
+
+    private async Task LoadHoldings(Dictionary<string, double> rates)
+    {
+        var all = new List<EnrichedHolding>();
+        foreach (var a in _accounts)
+        {
+            var hs = await Api.GetAsync<List<HoldingDto>>($"/api/accounts/{a.Id}/holdings") ?? [];
+            foreach (var h in hs)
+                all.Add(new EnrichedHolding { Symbol = h.Symbol, Quantity = h.Quantity, AvgCost = h.AvgCost, AccountId = a.Id, AccountCurrency = a.Currency });
+        }
+        var symbols = all.Select(h => h.Symbol).Distinct().ToList();
+        var prices = symbols.Count > 0 ? await Api.PostAsync<Dictionary<string, QuoteDto>>("/api/prices/quotes", new { symbols }) ?? [] : [];
+
+        double today = 0;
+        foreach (var h in all)
+        {
+            var p = prices.GetValueOrDefault(h.Symbol);
+            var price = p?.Price ?? 0;
+            var mv = h.Quantity * price;
+            var cb = h.Quantity * (h.AvgCost ?? 0);
+            h.Price = price; h.Name = p?.Name ?? h.Symbol; h.ChangePercent = p?.ChangePercent ?? 0;
+            h.MarketValue = mv; h.CostBasis = cb; h.Gain = mv - cb;
+            h.GainPct = cb > 0 ? (mv - cb) / cb * 100 : 0; h.Currency = p?.Currency ?? "USD";
+
+            var todayNative = h.Quantity * price * (h.ChangePercent / 100);
+            today += Convert(todayNative, h.Currency, _base, rates);
+        }
+        _today = today;
+        _todayPct = _net != 0 ? today / _net * 100 : 0;
+        _holdings = all.OrderByDescending(h => h.MarketValue).ToList();
+        State.AllHoldings = _holdings;
+    }
+
+    private static Dictionary<string, double> BuildRates(List<CurrencyRateDto> rates)
+        => rates.ToDictionary(r => $"{r.FromCurrency}_{r.ToCurrency}", r => r.Rate);
+
+    private static double Convert(double amount, string from, string to, Dictionary<string, double> rates)
+        => from == to ? amount : amount * rates.GetValueOrDefault($"{from}_{to}", 1);
+
+    private static List<string> BuildLabels(List<string> dates)
+    {
+        var labels = new List<string>();
+        if (dates.Count == 0) return labels;
+        const int n = 6;
+        for (var i = 0; i < n; i++)
+        {
+            var idx = Math.Clamp((int)Math.Round((double)i / (n - 1) * (dates.Count - 1)), 0, dates.Count - 1);
+            var d = dates[idx];
+            labels.Add(DateTime.TryParse(d, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var dt)
+                ? dt.ToString("MMM d", System.Globalization.CultureInfo.InvariantCulture) : d);
+        }
+        return labels;
+    }
+
+    private static string AcctIcon(string icon) => icon switch
+    {
+        "bitcoin" => "bitcoin",
+        "gem" => "gem",
+        _ => "trend"
+    };
+
+    private void OpenAccount(int id) => Nav.NavigateTo($"/accounts/{id}");
+    private void OpenSymbol(EnrichedHolding h) => Nav.NavigateTo($"/accounts/{h.AccountId}/{Uri.EscapeDataString(h.Symbol)}");
+
+    private async Task StartClock()
+    {
+        _clock = await JS.InvokeAsync<string>("capitrack.cetClock");
+        _clockTimer = new Timer(async _ =>
+        {
+            try { _clock = await JS.InvokeAsync<string>("capitrack.cetClock"); await InvokeAsync(StateHasChanged); }
+            catch { }
+        }, null, 1000, 1000);
+    }
+
+    public void Dispose() => _clockTimer?.Dispose();
+}

@@ -1,0 +1,17 @@
+<div class="card" style="overflow:hidden;">
+    <div class="row-between" style="padding:14px 18px;border-bottom:1px solid var(--border);background:var(--surface-2);">
+        <div class="flex gap-2" style="font-weight:700;font-size:0.95rem;"><Icon Name="@IconName" Width="17" Height="17" /> @Title</div>
+        @if (Action is not null)
+        {
+            <div class="flex gap-2">@Action</div>
+        }
+    </div>
+    <div style="padding:18px;">@ChildContent</div>
+</div>
+
+@code {
+    [Parameter] public string IconName { get; set; } = "";
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public RenderFragment? Action { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

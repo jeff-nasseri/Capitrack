@@ -1,0 +1,16 @@
+@inherits LayoutComponentBase
+
+<div class="app">
+    <div class="app-bg"></div>
+    <Rail />
+    <div class="main">
+        <TopBar />
+        <div class="scroll">
+            @Body
+        </div>
+    </div>
+</div>
+
+<ModalHost />
+<ImportModal />
+<ToastHost />

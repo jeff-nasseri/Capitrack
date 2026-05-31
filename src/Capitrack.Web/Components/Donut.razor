@@ -1,0 +1,39 @@
+<svg width="@Size" height="@Size" viewBox="0 0 @Size @Size">
+    <g transform="rotate(-90 @Half @Half)">
+        @foreach (var a in _arcs)
+        {
+            <circle cx="@Half" cy="@Half" r="@_r" fill="none" style="stroke:@a.Color" stroke-width="@Thickness"
+                    stroke-dasharray="@a.Len @(_c - a.Len)" stroke-dashoffset="@(-a.Offset)" stroke-linecap="butt"></circle>
+        }
+    </g>
+</svg>
+
+@code {
+    [Parameter] public IReadOnlyList<DonutSegment> Segments { get; set; } = [];
+    [Parameter] public int Size { get; set; } = 160;
+    [Parameter] public int Thickness { get; set; } = 18;
+
+    public record DonutSegment(double Value, string Color);
+    private record Arc(double Len, double Offset, string Color);
+
+    private double Half => Size / 2.0;
+    private double _r;
+    private double _c;
+    private List<Arc> _arcs = [];
+
+    protected override void OnParametersSet()
+    {
+        _r = (Size - Thickness) / 2.0;
+        _c = 2 * Math.PI * _r;
+        var total = Segments.Sum(s => s.Value);
+        if (total <= 0) { _arcs = []; return; }
+        _arcs = [];
+        double offset = 0;
+        foreach (var s in Segments)
+        {
+            var len = s.Value / total * _c;
+            _arcs.Add(new Arc(len, offset, s.Color));
+            offset += len;
+        }
+    }
+}

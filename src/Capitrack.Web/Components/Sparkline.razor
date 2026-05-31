@@ -1,0 +1,39 @@
+<svg width="@W" height="@H" style="display:block;">
+    <defs>
+        <linearGradient id="@_gid" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" style="stop-color:@_col;stop-opacity:0.22"></stop>
+            <stop offset="1" style="stop-color:@_col;stop-opacity:0"></stop>
+        </linearGradient>
+    </defs>
+    @if (_line.Length > 0)
+    {
+        <path d="@_area" fill="url(#@_gid)"></path>
+        <path d="@_line" fill="none" style="stroke:@_col;stroke-width:1.6"></path>
+    }
+</svg>
+
+@code {
+    [Parameter] public IReadOnlyList<double>? Data { get; set; }
+    [Parameter] public int W { get; set; } = 84;
+    [Parameter] public int H { get; set; } = 30;
+    [Parameter] public bool Up { get; set; } = true;
+
+    private readonly string _gid = "sp" + Guid.NewGuid().ToString("N")[..6];
+    private string _col = "var(--up)";
+    private string _line = "";
+    private string _area = "";
+
+    protected override void OnParametersSet()
+    {
+        _col = Up ? "var(--up)" : "var(--down)";
+        var d = Data;
+        if (d is null || d.Count < 2) { _line = ""; _area = ""; return; }
+        double min = d.Min(), max = d.Max();
+        double range = max - min == 0 ? 1 : max - min;
+        double X(int i) => (double)i / (d.Count - 1) * W;
+        double Y(double v) => 3 + (1 - (v - min) / range) * (H - 6);
+        var pts = d.Select((v, i) => (X(i), Y(v))).ToList();
+        _line = ChartMath.SmoothPath(pts);
+        _area = $"{_line} L {W} {H} L 0 {H} Z";
+    }
+}

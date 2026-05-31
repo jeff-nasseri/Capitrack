@@ -1,0 +1,69 @@
+<form @onsubmit="Save" @onsubmit:preventDefault>
+    <SymbolSearch @bind-Value="Model.Symbol" />
+    <div class="form-row">
+        <div class="field">
+            <label>Type</label>
+            <select class="input" @bind="Model.Type">
+                @foreach (var t in Types)
+                {
+                    <option value="@t">@t.Replace("_", " ")</option>
+                }
+            </select>
+        </div>
+        <div class="field">
+            <label>Date</label>
+            <input class="input" type="date" value="@Model.Date" @onchange="e => Model.Date = e.Value?.ToString() ?? string.Empty" required />
+        </div>
+    </div>
+    <div class="form-row">
+        <div class="field"><label>Quantity</label><input class="input" type="number" step="any" min="0" @bind="Model.Quantity" required /></div>
+        <div class="field"><label>Price per unit</label><input class="input" type="number" step="any" min="0" @bind="Model.Price" required /></div>
+    </div>
+    <div class="form-row">
+        <div class="field"><label>Fee</label><input class="input" type="number" step="any" min="0" @bind="Model.Fee" /></div>
+        <div class="field">
+            <label>Currency</label>
+            <select class="input" @bind="Model.Currency">
+                @foreach (var c in Currencies)
+                {
+                    <option value="@c">@c</option>
+                }
+            </select>
+        </div>
+    </div>
+    <div class="field"><label>Notes</label><input class="input" type="text" @bind="Model.Notes" /></div>
+    @if (Tags.Count > 0)
+    {
+        <div class="field">
+            <label>Tags</label>
+            <div class="tag-checkbox-group">
+                @foreach (var t in Tags)
+                {
+                    <label class="tag-checkbox">
+                        <input type="checkbox" checked="@Model.TagIds.Contains(t.Id)"
+                               @onchange="e => ToggleTag(t.Id, (bool)(e.Value ?? false))" />
+                        <span>@t.Name</span>
+                    </label>
+                }
+            </div>
+        </div>
+    }
+    <button type="submit" class="btn btn-pri btn-block"><Icon Name="check" /> Save</button>
+</form>
+
+@code {
+    [Parameter] public TransactionFormModel Model { get; set; } = new();
+    [Parameter] public IReadOnlyList<TagDto> Tags { get; set; } = [];
+    [Parameter] public EventCallback OnSave { get; set; }
+
+    private static readonly string[] Types = ["buy", "sell", "transfer_in", "transfer_out", "dividend", "interest", "fee"];
+    private static readonly string[] Currencies = ["EUR", "USD", "GBP", "CHF", "JPY", "CAD", "AUD", "CNY"];
+
+    private void ToggleTag(int id, bool on) { if (on) Model.TagIds.Add(id); else Model.TagIds.Remove(id); }
+
+    private async Task Save()
+    {
+        Model.Symbol = Model.Symbol.ToUpperInvariant();
+        await OnSave.InvokeAsync();
+    }
+}

@@ -1,0 +1,62 @@
+<form @onsubmit="Save" @onsubmit:preventDefault>
+    <div class="field"><label>Name</label><input class="input" type="text" @bind="Model.Name" required /></div>
+    <div class="form-row">
+        <div class="field">
+            <label>Type</label>
+            <select class="input" @bind="Model.Type">
+                @foreach (var t in Types)
+                {
+                    <option value="@t">@t.Replace("_", " ")</option>
+                }
+            </select>
+        </div>
+        <div class="field"><label>Currency</label><input class="input" type="text" @bind="Model.Currency" maxlength="5" /></div>
+    </div>
+    <div class="form-row">
+        <div class="field">
+            <label>Icon</label>
+            <select class="input" @bind="Model.Icon">
+                @foreach (var i in Icons)
+                {
+                    <option value="@i">@i</option>
+                }
+            </select>
+        </div>
+        <div class="field"><label>Color</label><input class="input" type="color" @bind="Model.Color" /></div>
+    </div>
+    <div class="field"><label>Description</label><input class="input" type="text" @bind="Model.Description" /></div>
+    @if (Tags.Count > 0)
+    {
+        <div class="field">
+            <label>Tags (optional)</label>
+            <div class="tag-checkboxes">
+                @foreach (var t in Tags)
+                {
+                    <label class="tag-checkbox">
+                        <input type="checkbox" checked="@Model.TagIds.Contains(t.Id)"
+                               @onchange="e => ToggleTag(t.Id, (bool)(e.Value ?? false))" />
+                        <span>@t.Name</span>
+                    </label>
+                }
+            </div>
+        </div>
+    }
+    <button type="submit" class="btn btn-pri btn-block"><Icon Name="check" /> Save</button>
+</form>
+
+@code {
+    [Parameter] public AccountFormModel Model { get; set; } = new();
+    [Parameter] public IReadOnlyList<TagDto> Tags { get; set; } = [];
+    [Parameter] public EventCallback OnSave { get; set; }
+
+    private static readonly string[] Types = ["general", "crypto", "stock", "commodity", "savings", "retirement", "real_estate"];
+    private static readonly string[] Icons = ["wallet", "bitcoin", "chart-line", "gem", "bank", "piggy"];
+
+    private void ToggleTag(int id, bool on) { if (on) Model.TagIds.Add(id); else Model.TagIds.Remove(id); }
+
+    private async Task Save()
+    {
+        Model.Currency = Model.Currency.ToUpperInvariant();
+        await OnSave.InvokeAsync();
+    }
+}

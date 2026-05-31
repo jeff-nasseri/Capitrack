@@ -9,72 +9,31 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
         with:
-          fetch-depth: 0
+          dotnet-version: '10.0.x'
 
-      - name: Use Node.js 20.x
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20.x
+      - name: Restore
+        run: dotnet restore
 
-      - name: Install dependencies
-        run: npm install
+      - name: Build
+        run: dotnet build --no-restore -c Release
 
-      - name: Build TypeScript
-        run: npm run build
+      - name: Test
+        run: dotnet test --no-build -c Release --verbosity normal
 
-  publish:
+  docker:
     needs: build
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-    permissions:
-      contents: write
-
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Install GitVersion
-        uses: gittools/actions/gitversion/setup@v0
-        with:
-          versionSpec: '5.x'
+      - name: Build API image
+        run: docker build -f docker/api.Dockerfile -t capitrack-api .
 
-      - name: Determine Version
-        id: gitversion
-        uses: gittools/actions/gitversion/execute@v0
-        with:
-          useConfigFile: true
-          configFilePath: GitVersion.yml
-
-      - name: Use Node.js 20.x
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20.x
-          registry-url: 'https://registry.npmjs.org'
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Build TypeScript
-        run: npm run build
-
-      - name: Update package.json version
-        run: |
-          npm version ${{ steps.gitversion.outputs.semVer }} --no-git-tag-version --allow-same-version
-
-      - name: Publish to npm
-        run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Create Git tag
-        if: success()
-        run: |
-          git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"
-          git tag v${{ steps.gitversion.outputs.semVer }}
-          git push origin v${{ steps.gitversion.outputs.semVer }}
+      - name: Build Web image
+        run: docker build -f docker/web.Dockerfile -t capitrack-web .

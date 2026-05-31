@@ -1,0 +1,219 @@
+@page "/calendar"
+@using System.Globalization
+@inject ApiClient Api
+@inject TopBarState TopBar
+
+<div class="page page-wide">
+    <div class="row-between" style="margin-bottom:16px;">
+        <div class="flex gap-3">
+            <button class="btn-icon" title="Previous" @onclick="Prev"><Icon Name="chevL" /></button>
+            <span style="font-weight:750;font-size:1.05rem;min-width:150px;text-align:center;">@Title</span>
+            <button class="btn-icon" title="Next" @onclick="Next"><Icon Name="chevR" /></button>
+        </div>
+        <div class="flex gap-2">
+            <div class="seg">
+                @foreach (var v in new[] { "month", "week", "year" })
+                {
+                    <button class="@(_view == v ? "active" : "")" @onclick="() => SetView(v)">@(char.ToUpper(v[0]) + v[1..])</button>
+                }
+            </div>
+            <button class="btn btn-ghost btn-sm" @onclick="Today">Today</button>
+        </div>
+    </div>
+
+    @if (_loading)
+    {
+        <div class="loading-spinner">Loading calendar…</div>
+    }
+    else if (_view == "month")
+    {
+        @MonthView()
+    }
+    else if (_view == "week")
+    {
+        @WeekView()
+    }
+    else
+    {
+        @YearView()
+    }
+</div>
+
+@code {
+    private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
+    private static readonly string[] Dow = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    private string _view = "month";
+    private DateTime _current = DateTime.UtcNow.Date;
+    private List<TransactionDto> _transactions = [];
+    private Dictionary<string, DailyWealthDto> _wealth = [];
+    private bool _loading = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        TopBar.Set("Calendar");
+        _transactions = await Api.GetAsync<List<TransactionDto>>("/api/transactions?limit=5000") ?? [];
+        _ = Api.PostAsync<object>("/api/prices/daily-wealth", new { });
+        await LoadWealth();
+        _loading = false;
+    }
+
+    private async Task LoadWealth()
+    {
+        var (start, end) = _view switch
+        {
+            "week" => (WeekStart(_current), WeekStart(_current).AddDays(6)),
+            "year" => (new DateTime(_current.Year, 1, 1), new DateTime(_current.Year, 12, 31)),
+            _ => (new DateTime(_current.Year, _current.Month, 1), new DateTime(_current.Year, _current.Month, DateTime.DaysInMonth(_current.Year, _current.Month)))
+        };
+        var rows = await Api.GetAsync<List<DailyWealthDto>>($"/api/prices/daily-wealth?start={start:yyyy-MM-dd}&end={end:yyyy-MM-dd}") ?? [];
+        _wealth = rows.ToDictionary(r => r.Date);
+    }
+
+    private async Task Prev() { _current = _view switch { "week" => _current.AddDays(-7), "year" => _current.AddYears(-1), _ => _current.AddMonths(-1) }; await LoadWealth(); }
+    private async Task Next() { _current = _view switch { "week" => _current.AddDays(7), "year" => _current.AddYears(1), _ => _current.AddMonths(1) }; await LoadWealth(); }
+    private async Task Today() { _current = DateTime.UtcNow.Date; await LoadWealth(); }
+    private async Task SetView(string v) { _view = v; await LoadWealth(); }
+
+    private string Title => _view switch
+    {
+        "week" => $"{WeekStart(_current):MMM d} - {WeekStart(_current).AddDays(6):MMM d, yyyy}",
+        "year" => _current.Year.ToString(),
+        _ => _current.ToString("MMMM yyyy", Inv)
+    };
+
+    private static DateTime WeekStart(DateTime d)
+    {
+        int diff = (7 + (int)d.DayOfWeek - (int)DayOfWeek.Monday) % 7;
+        return d.Date.AddDays(-diff);
+    }
+
+    private List<TransactionDto> TxOn(DateTime d) =>
+        _transactions.Where(t => t.Date.Split('T')[0] == d.ToString("yyyy-MM-dd")).ToList();
+
+    private static string TColor(string type) => type switch
+    {
+        "buy" or "transfer_in" => "var(--up)",
+        "sell" => "var(--down)",
+        _ => "var(--pri-2)"
+    };
+
+    // ---- Month ----
+    private RenderFragment MonthView() => __builder =>
+    {
+        var first = new DateTime(_current.Year, _current.Month, 1);
+        int lead = (7 + (int)first.DayOfWeek - (int)DayOfWeek.Monday) % 7;
+        var gridStart = first.AddDays(-lead);
+        <div class="card" style="overflow:hidden;">
+            <div style="display:grid;grid-template-columns:repeat(7,1fr);border-bottom:1px solid var(--border);">
+                @foreach (var d in Dow)
+                {
+                    <div style="padding:11px;font-size:0.66rem;font-weight:700;letter-spacing:0.07em;color:var(--text-3);text-align:center;">@d.ToUpperInvariant()</div>
+                }
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(7,1fr);">
+                @for (var i = 0; i < 42; i++)
+                {
+                    var day = gridStart.AddDays(i);
+                    var outside = day.Month != _current.Month;
+                    var isToday = day == DateTime.UtcNow.Date;
+                    var txs = TxOn(day);
+                    var w = _wealth.GetValueOrDefault(day.ToString("yyyy-MM-dd"));
+                    var up = w is not null && w.TotalWealth - w.TotalCost >= 0;
+                    <div style="min-height:104px;padding:8px;border-right:@((i % 7 != 6) ? "1px solid var(--hairline)" : "none");border-bottom:1px solid var(--hairline);background:@(isToday ? "var(--pri-soft)" : "transparent");opacity:@(outside ? "0.32" : "1");">
+                        <div class="row-between">
+                            <span style="font-size:0.78rem;font-weight:600;color:@(isToday ? "#fff" : "var(--text-2)");background:@(isToday ? "var(--pri)" : "transparent");width:22px;height:22px;border-radius:50%;display:grid;place-items:center;">@day.Day</span>
+                            @if (w is not null && !outside)
+                            {
+                                <span class="tnum" style="font-size:0.62rem;font-weight:700;color:@(up ? "var(--up)" : "var(--down)");">@Format.CompactMoney(w.TotalWealth)</span>
+                            }
+                        </div>
+                        <div class="flex-col gap-2" style="margin-top:6px;">
+                            @foreach (var tx in txs.Take(2))
+                            {
+                                <div class="flex gap-2" style="font-size:0.64rem;font-weight:600;padding:2px 5px;border-radius:4px;background:var(--surface-2);">
+                                    <i style="width:6px;height:6px;border-radius:2px;background:@TColor(tx.Type);flex-shrink:0;"></i>
+                                    <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">@tx.Symbol</span>
+                                </div>
+                            }
+                            @if (txs.Count > 2)
+                            {
+                                <span class="sub" style="font-size:0.62rem;">+@(txs.Count - 2) more</span>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    };
+
+    // ---- Week ----
+    private RenderFragment WeekView() => __builder =>
+    {
+        var start = WeekStart(_current);
+        <div class="grid" style="grid-template-columns:repeat(7,1fr);gap:10px;">
+            @for (var i = 0; i < 7; i++)
+            {
+                var day = start.AddDays(i);
+                var isToday = day == DateTime.UtcNow.Date;
+                var txs = TxOn(day);
+                var w = _wealth.GetValueOrDefault(day.ToString("yyyy-MM-dd"));
+                <div class="card" style="min-height:320px;overflow:hidden;border-color:@(isToday ? "var(--pri)" : "var(--border)");">
+                    <div style="padding:10px;border-bottom:1px solid var(--border);text-align:center;background:var(--surface-2);">
+                        <div class="sub" style="font-size:0.62rem;font-weight:700;">@day.ToString("ddd", Inv).ToUpperInvariant()</div>
+                        <div style="font-size:1.05rem;font-weight:700;color:@(isToday ? "var(--pri-2)" : "var(--text)");">@day.Day</div>
+                    </div>
+                    @if (w is not null)
+                    {
+                        var gainPct = w.TotalCost > 0 ? (w.TotalWealth - w.TotalCost) / w.TotalCost * 100 : 0;
+                        var pos = w.TotalWealth - w.TotalCost >= 0;
+                        <div style="padding:8px 10px;border-bottom:1px solid var(--hairline);">
+                            <div class="sub" style="font-size:0.6rem;font-weight:700;letter-spacing:0.05em;">WEALTH</div>
+                            <div class="tnum" style="font-weight:700;font-size:0.9rem;">@Format.Money(w.TotalWealth, w.BaseCurrency)</div>
+                            <div class="delta @(pos ? "up" : "down")" style="font-size:0.72rem;">@Format.Pct(gainPct, 1)</div>
+                        </div>
+                    }
+                    <div class="flex-col gap-2" style="padding:8px;">
+                        @if (txs.Count == 0)
+                        {
+                            <div class="sub" style="text-align:center;padding:16px;font-size:0.72rem;">—</div>
+                        }
+                        @foreach (var tx in txs)
+                        {
+                            <div style="padding:7px 8px;border-radius:6px;background:var(--surface-2);font-size:0.74rem;">
+                                <div class="flex row-between"><b>@tx.Symbol</b><TxnBadge Type="@tx.Type" /></div>
+                                <div class="sub tnum" style="margin-top:3px;">@Format.Money(tx.Quantity * tx.Price, tx.Currency)</div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    };
+
+    // ---- Year ----
+    private RenderFragment YearView() => __builder =>
+    {
+        <div class="grid" style="grid-template-columns:repeat(4,1fr);gap:14px;">
+            @for (var m = 1; m <= 12; m++)
+            {
+                var prefix = $"{_current.Year:D4}-{m:D2}";
+                var monthTx = _transactions.Where(t => t.Date.Split('T')[0].StartsWith(prefix)).ToList();
+                var isCurrent = m == DateTime.UtcNow.Month && _current.Year == DateTime.UtcNow.Year;
+                var count = monthTx.Count;
+                var monthWealth = _wealth.Where(kv => kv.Key.StartsWith(prefix)).OrderBy(kv => kv.Key).Select(kv => (DailyWealthDto?)kv.Value).LastOrDefault();
+                var heat = Math.Min(7, count);
+                <div class="card card-pad" style="border-color:@(isCurrent ? "var(--pri)" : "var(--border)");">
+                    <div class="row-between"><b>@(new DateTime(_current.Year, m, 1).ToString("MMM", Inv))</b><span class="sub">@count txns</span></div>
+                    <div class="tnum mt-2" style="font-weight:750;font-size:1.1rem;">@(monthWealth is not null ? Format.CompactMoney(monthWealth.TotalWealth, monthWealth.BaseCurrency) : "—")</div>
+                    <div class="flex gap-2 mt-2" style="flex-wrap:wrap;">
+                        @for (var k = 0; k < 7; k++)
+                        {
+                            var lit = k < heat;
+                            <i style="width:11px;height:11px;border-radius:3px;background:@(lit ? $"rgba(var(--pri-rgb), {(0.3 + (k / 7.0) * 0.7).ToString("0.##", Inv)})" : "var(--surface-3)");"></i>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    };
+}

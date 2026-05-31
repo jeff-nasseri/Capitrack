@@ -1,0 +1,59 @@
+@inject ApiClient Api
+
+<div class="field symbol-search-wrapper">
+    <label>Symbol</label>
+    <input class="input" value="@Value" @oninput="OnInput" @onfocus="OnFocus"
+           placeholder="Search: BTC-USD, AAPL, GC=F…" autocomplete="off" />
+    @if (_show && _suggestions.Count > 0)
+    {
+        <div class="symbol-suggestions">
+            @foreach (var s in _suggestions)
+            {
+                <div class="symbol-suggestion" @onclick="() => Select(s)">
+                    <div><strong>@s.Symbol</strong> <span class="sym-name">@s.Name</span></div>
+                    <span class="sym-type">@s.Type</span>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string Value { get; set; } = "";
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+
+    private List<SearchResultDto> _suggestions = [];
+    private bool _show;
+    private CancellationTokenSource? _cts;
+
+    private async Task OnInput(ChangeEventArgs e)
+    {
+        var q = e.Value?.ToString() ?? "";
+        Value = q;
+        await ValueChanged.InvokeAsync(q);
+
+        _cts?.Cancel();
+        _cts = new CancellationTokenSource();
+        var token = _cts.Token;
+        try { await Task.Delay(250, token); } catch { return; }
+        if (q.Length < 1) { _suggestions.Clear(); _show = false; StateHasChanged(); return; }
+
+        var res = await Api.GetAsync<List<SearchResultDto>>($"/api/prices/search/{Uri.EscapeDataString(q)}");
+        if (token.IsCancellationRequested) return;
+        _suggestions = (res ?? []).Take(10).ToList();
+        _show = _suggestions.Count > 0;
+        StateHasChanged();
+    }
+
+    private void OnFocus()
+    {
+        if (_suggestions.Count > 0 && Value.Length >= 1) _show = true;
+    }
+
+    private async Task Select(SearchResultDto s)
+    {
+        Value = s.Symbol;
+        await ValueChanged.InvokeAsync(s.Symbol);
+        _show = false;
+    }
+}

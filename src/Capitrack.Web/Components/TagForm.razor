@@ -1,0 +1,11 @@
+<form @onsubmit="Save" @onsubmit:preventDefault>
+    <div class="field"><label>Name</label><input class="input" type="text" @bind="Model.Name" required /></div>
+    <div class="field"><label>Color</label><input class="input" type="color" @bind="Model.Color" /></div>
+    <button type="submit" class="btn btn-pri btn-block"><Icon Name="check" /> Save</button>
+</form>
+
+@code {
+    [Parameter] public TagFormModel Model { get; set; } = new();
+    [Parameter] public EventCallback OnSave { get; set; }
+    private async Task Save() => await OnSave.InvokeAsync();
+}

@@ -1,0 +1,299 @@
+@page "/accounts/{AccountId:int}/{Symbol}"
+@using System.Globalization
+@inject ApiClient Api
+@inject AppState State
+@inject ModalService Modal
+@inject ToastService Toast
+@inject TopBarState TopBar
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<div class="page page-wide">
+    @* header *@
+    <div class="row-between" style="align-items:flex-start;">
+        <div class="flex gap-3">
+            <Coin Sym="@Symbol" Size="lg" />
+            <div>
+                <div style="font-size:1.3rem;font-weight:750;letter-spacing:-0.02em;">@(_quote?.Name ?? Symbol)</div>
+                <div class="sub">@Symbol</div>
+            </div>
+        </div>
+        <div class="seg">
+            <button class="@(_tab == "overview" ? "active" : "")" @onclick='() => _tab = "overview"'>Overview</button>
+            <button class="@(_tab == "lots" ? "active" : "")" @onclick='() => _tab = "lots"'>Lots</button>
+            <button class="@(_tab == "quotes" ? "active" : "")" @onclick='() => _tab = "quotes"'>Quotes</button>
+        </div>
+    </div>
+
+    @* price + delta *@
+    <div class="flex gap-2" style="align-items:flex-end;margin-top:18px;">
+        <div class="bignum tnum">@Format.Money(_price, _currency)</div>
+        <div class="delta @(_changePct >= 0 ? "up" : "down")" style="font-size:0.9rem;padding-bottom:7px;">
+            @Format.Signed(_priceChange, _currency) (@Format.Pct(_changePct)) <span class="sub" style="font-weight:400;">past 3 months</span>
+        </div>
+    </div>
+
+    <div class="grid mt-4" style="grid-template-columns:1fr 320px;align-items:start;">
+        @* left column *@
+        <div class="flex-col gap-4">
+            <div class="card" style="overflow:hidden;">
+                <div style="padding:16px 12px;">
+                    <PeriodChart Data="_chart" Labels="_labels" Currency="@_currency" Height="230" Selected="@_period" SelectedChanged="LoadChart" />
+                </div>
+            </div>
+
+            @if (_tab == "overview")
+            {
+                <div class="card card-pad">
+                    <div class="section-title" style="margin-bottom:10px;">About</div>
+                    <span class="chip pri">@_typeLabel</span>
+                    <p class="sub" style="margin-top:12px;line-height:1.7;">@(_quote?.Name ?? Symbol) is held in your portfolio. Live quotes are fetched automatically; this overview reflects your current position, average cost and lifetime return.</p>
+                    <div class="grid mt-4" style="grid-template-columns:1fr 1fr;gap:0 28px;">
+                        @foreach (var (label, isVolume) in _overviewStats)
+                        {
+                            <div class="flex row-between" style="padding:10px 0;border-bottom:1px solid var(--hairline);font-size:0.86rem;">
+                                <span class="sub">@label</span>
+                                <span class="num" style="font-weight:600;">@(isVolume ? "0" : Format.Money(_price, _currency))</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+
+            @if (_tab == "lots")
+            {
+                <div class="card" style="overflow:hidden;">
+                    <div style="overflow-x:auto;">
+                        <table class="tbl">
+                            <thead>
+                                <tr>
+                                    <th style="padding-top:16px;">Date</th>
+                                    <th style="padding-top:16px;">Type</th>
+                                    <th class="r" style="padding-top:16px;">Quantity</th>
+                                    <th class="r" style="padding-top:16px;">Price</th>
+                                    <th class="r" style="padding-top:16px;">Total</th>
+                                    <th style="width:40px;"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @if (_transactions.Count == 0)
+                                {
+                                    <tr><td colspan="6" class="sub" style="text-align:center;padding:28px;">No lots recorded for this symbol.</td></tr>
+                                }
+                                @foreach (var tx in _transactions)
+                                {
+                                    <tr>
+                                        <td style="white-space:nowrap;">@Format.Date(tx.Date)</td>
+                                        <td><TxnBadge Type="@tx.Type" /></td>
+                                        <td class="r num">@Format.Shares(tx.Quantity)</td>
+                                        <td class="r num">@Format.Money(tx.Price, tx.Currency)</td>
+                                        <td class="r num" style="font-weight:650;">@Format.Money(tx.Quantity * tx.Price, tx.Currency)</td>
+                                        <td style="position:relative;">
+                                            <button class="btn-icon" style="width:30px;height:30px;background:transparent;border:none;" @onclick="() => _openTxId = _openTxId == tx.Id ? null : tx.Id" @onclick:stopPropagation="true">
+                                                <Icon Name="more" Width="16" Height="16" />
+                                            </button>
+                                            @if (_openTxId == tx.Id)
+                                            {
+                                                <div class="menu-pop" style="position:absolute;right:10px;top:36px;z-index:30;" @onclick:stopPropagation="true">
+                                                    <button @onclick="() => EditTx(tx)"><Icon Name="edit" Width="15" Height="15" /> Edit</button>
+                                                    <button class="danger" @onclick="() => DeleteTx(tx)"><Icon Name="trash" Width="15" Height="15" /> Delete</button>
+                                                </div>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            }
+
+            @if (_tab == "quotes")
+            {
+                <div class="card card-pad">
+                    <div class="section-title" style="margin-bottom:10px;">Quote details</div>
+                    <div class="grid" style="grid-template-columns:1fr 1fr;gap:0 28px;">
+                        <div class="flex row-between" style="padding:10px 0;border-bottom:1px solid var(--hairline);font-size:0.86rem;"><span class="sub">Market Cap</span><span class="num" style="font-weight:600;">@Format.Compact(0)</span></div>
+                        <div class="flex row-between" style="padding:10px 0;border-bottom:1px solid var(--hairline);font-size:0.86rem;"><span class="sub">P/E Ratio</span><span class="num" style="font-weight:600;">N/A</span></div>
+                        <div class="flex row-between" style="padding:10px 0;border-bottom:1px solid var(--hairline);font-size:0.86rem;"><span class="sub">52W High</span><span class="num" style="font-weight:600;">@Format.Money(0, _currency)</span></div>
+                        <div class="flex row-between" style="padding:10px 0;border-bottom:1px solid var(--hairline);font-size:0.86rem;"><span class="sub">52W Low</span><span class="num" style="font-weight:600;">@Format.Money(0, _currency)</span></div>
+                        <div class="flex row-between" style="padding:10px 0;border-bottom:1px solid var(--hairline);font-size:0.86rem;"><span class="sub">Avg Volume</span><span class="num" style="font-weight:600;">@Format.Compact(0)</span></div>
+                        <div class="flex row-between" style="padding:10px 0;border-bottom:1px solid var(--hairline);font-size:0.86rem;"><span class="sub">Dividend Yield</span><span class="num" style="font-weight:600;">N/A</span></div>
+                    </div>
+                </div>
+            }
+        </div>
+
+        @* position card *@
+        <div class="card card-pad" style="background:linear-gradient(180deg, var(--pri-soft), transparent 50%), var(--surface);">
+            <div class="flex row-between" style="align-items:flex-end;">
+                <div>
+                    <div class="tnum" style="font-size:1.6rem;font-weight:800;">@Format.Shares(_totalQty)</div>
+                    <div class="sub">shares</div>
+                </div>
+                <div style="text-align:right;">
+                    <div class="tnum" style="font-size:1.6rem;font-weight:800;">@Format.Money(_marketValue, _currency)</div>
+                    <div class="sub">@_currency</div>
+                </div>
+            </div>
+            <div class="mt-4">
+                <div class="flex row-between" style="padding:11px 0;border-top:1px solid var(--hairline);font-size:0.86rem;"><span class="sub">Book value</span><span class="num" style="font-weight:650;">@Format.Money(_bookValue, _currency)</span></div>
+                <div class="flex row-between" style="padding:11px 0;border-top:1px solid var(--hairline);font-size:0.86rem;"><span class="sub">Average cost</span><span class="num" style="font-weight:650;">@Format.Money(_avgCost, _currency)</span></div>
+                <div class="flex row-between" style="padding:11px 0;border-top:1px solid var(--hairline);font-size:0.86rem;"><span class="sub">% of my portfolio</span><span class="num" style="font-weight:650;">@_portfolioPct.ToString("F2", CultureInfo.InvariantCulture)%</span></div>
+                <div class="flex row-between" style="padding:11px 0;border-top:1px solid var(--hairline);font-size:0.86rem;"><span class="sub">Today's return</span><span class="num delta @(_todayReturn >= 0 ? "up" : "down")" style="font-weight:650;">@Format.Signed(_todayReturn, _currency) (@Format.Pct(_changePct))</span></div>
+                <div class="flex row-between" style="padding:11px 0;border-top:1px solid var(--hairline);font-size:0.86rem;"><span class="sub">Total return</span><span class="num delta @(_totalReturn >= 0 ? "up" : "down")" style="font-weight:650;">@Format.Signed(_totalReturn, _currency) (@Format.Pct(_totalReturnPct))</span></div>
+            </div>
+            <button class="btn btn-ghost btn-block mt-4" style="width:100%;" @onclick="ShowAddTx"><Icon Name="plus" /> Add transaction</button>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public int AccountId { get; set; }
+    [Parameter] public string Symbol { get; set; } = "";
+
+    private QuoteDto? _quote;
+    private List<TransactionDto> _transactions = [];
+    private List<double> _chart = [];
+    private List<string> _labels = [];
+    private List<TagDto> _tags = [];
+    private string _tab = "overview";
+    private string _period = "3m";
+    private string _currency = "USD";
+    private string _typeLabel = "STOCK";
+    private double _price, _changePct, _priceChange, _totalQty, _avgCost, _bookValue, _marketValue;
+    private double _totalReturn, _totalReturnPct, _todayReturn, _portfolioPct;
+    private int? _openTxId;
+
+    private static readonly (string Label, bool IsVolume)[] _overviewStats =
+        [("Open", false), ("Close", false), ("High", false), ("Low", false), ("Prev. Close", false), ("Volume", true)];
+
+    protected override async Task OnParametersSetAsync()
+    {
+        State.CurrentAccountId = AccountId;
+        State.CurrentSymbol = Symbol;
+        _tab = "overview";
+        TopBar.Set("Position", onBack: () => Nav.NavigateTo($"/accounts/{AccountId}"));
+        await Reload();
+    }
+
+    private async Task Reload()
+    {
+        var quoteTask = Api.GetAsync<QuoteDto>($"/api/prices/quote/{Uri.EscapeDataString(Symbol)}");
+        var txTask = Api.GetAsync<List<TransactionDto>>($"/api/transactions?account_id={AccountId}&symbol={Uri.EscapeDataString(Symbol)}");
+        await Task.WhenAll(quoteTask, txTask);
+        _quote = await quoteTask;
+        _transactions = await txTask ?? [];
+
+        double totalQty = 0, totalCost = 0, totalBuyQty = 0;
+        foreach (var tx in _transactions)
+        {
+            if (tx.Type is "buy" or "transfer_in") { totalQty += tx.Quantity; totalCost += tx.Quantity * tx.Price; totalBuyQty += tx.Quantity; }
+            else if (tx.Type is "sell" or "transfer_out") { totalQty -= tx.Quantity; }
+        }
+
+        _price = _quote?.Price ?? 0;
+        _currency = _quote?.Currency ?? "USD";
+        _changePct = _quote?.ChangePercent ?? 0;
+        _priceChange = _price * _changePct / 100;
+        _totalQty = totalQty;
+        _marketValue = totalQty * _price;
+        _avgCost = totalBuyQty > 0 ? totalCost / totalBuyQty : 0;
+        _bookValue = totalQty * _avgCost;
+        _totalReturn = _marketValue - _bookValue;
+        _totalReturnPct = _bookValue > 0 ? _totalReturn / _bookValue * 100 : 0;
+        _todayReturn = totalQty * (_price * _changePct / 100);
+        _typeLabel = AssetType(Symbol);
+
+        var summary = State.DashboardSummary ?? await Api.GetAsync<DashboardSummaryDto>("/api/prices/dashboard/summary");
+        var totalWealth = summary?.TotalWealth ?? _marketValue;
+        _portfolioPct = totalWealth > 0 ? _marketValue / totalWealth * 100 : 0;
+
+        StateHasChanged();
+        await LoadChart(_period);
+    }
+
+    private async Task LoadChart(string period)
+    {
+        _period = period;
+        var data = await Api.GetAsync<List<HistoryPointDto>>($"/api/prices/history/{Uri.EscapeDataString(Symbol)}?period={period}");
+        var points = (data ?? []).Where(d => d.Close != null).ToList();
+        _chart = points.Select(d => d.Close ?? 0).ToList();
+        _labels = BuildLabels(points.Select(d => d.Date).ToList());
+        StateHasChanged();
+    }
+
+    private static string AssetType(string sym)
+    {
+        var s = sym.ToUpperInvariant();
+        if (s.EndsWith("-USD") || s.EndsWith("-EUR") || s.EndsWith("-GBP")) return "CRYPTO";
+        if (s.EndsWith("=F")) return "COMMODITY";
+        return "STOCK";
+    }
+
+    private static List<string> BuildLabels(List<DateTime> dates)
+    {
+        var labels = new List<string>();
+        if (dates.Count == 0) return labels;
+        const int n = 6;
+        for (var i = 0; i < n; i++)
+        {
+            var idx = Math.Clamp((int)Math.Round((double)i / (n - 1) * (dates.Count - 1)), 0, dates.Count - 1);
+            labels.Add(dates[idx].ToString("MMM d", CultureInfo.InvariantCulture));
+        }
+        return labels;
+    }
+
+    private async Task ShowAddTx()
+    {
+        _tags = await Api.GetAsync<List<TagDto>>("/api/tags") ?? [];
+        var model = new TransactionFormModel { Symbol = Symbol };
+        Modal.Show("Add Transaction", @<TransactionForm Model="model" Tags="_tags" OnSave="() => SaveTx(model)" />);
+    }
+
+    private async Task SaveTx(TransactionFormModel m)
+    {
+        await Api.PostAsync<TransactionDto>("/api/transactions", new
+        {
+            account_id = AccountId, symbol = m.Symbol, type = m.Type, date = m.Date, quantity = m.Quantity ?? 0,
+            price = m.Price ?? 0, fee = m.Fee, currency = m.Currency, notes = m.Notes, tag_ids = m.TagIds.ToList()
+        });
+        Modal.Close();
+        Toast.Show("Transaction added", "success");
+        await Reload();
+    }
+
+    private async Task EditTx(TransactionDto tx)
+    {
+        _openTxId = null;
+        _tags = await Api.GetAsync<List<TagDto>>("/api/tags") ?? [];
+        var model = new TransactionFormModel
+        {
+            Id = tx.Id, Symbol = tx.Symbol, Type = tx.Type, Date = tx.Date.Split('T')[0],
+            Quantity = tx.Quantity, Price = tx.Price, Fee = tx.Fee, Currency = tx.Currency, Notes = tx.Notes,
+            TagIds = tx.Tags.Select(t => t.Id).ToHashSet()
+        };
+        Modal.Show("Edit Transaction", @<TransactionForm Model="model" Tags="_tags" OnSave="() => SaveEdit(tx.Id, model)" />);
+    }
+
+    private async Task SaveEdit(int id, TransactionFormModel m)
+    {
+        await Api.PutAsync<TransactionDto>($"/api/transactions/{id}", new
+        {
+            symbol = m.Symbol, type = m.Type, date = m.Date, quantity = m.Quantity ?? 0,
+            price = m.Price ?? 0, fee = m.Fee, currency = m.Currency, notes = m.Notes, tag_ids = m.TagIds.ToList()
+        });
+        Modal.Close();
+        Toast.Show("Transaction updated", "success");
+        await Reload();
+    }
+
+    private async Task DeleteTx(TransactionDto tx)
+    {
+        _openTxId = null;
+        if (!await JS.InvokeAsync<bool>("capitrack.confirm", "Delete this transaction?")) return;
+        await Api.DeleteAsync<object>($"/api/transactions/{tx.Id}");
+        Toast.Show("Transaction deleted", "success");
+        await Reload();
+    }
+}

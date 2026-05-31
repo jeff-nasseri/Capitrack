@@ -1,0 +1,436 @@
+@page "/settings"
+@using System.Text.Json
+@inject ApiClient Api
+@inject AppState State
+@inject TopBarState TopBar
+@inject ModalService Modal
+@inject ToastService Toast
+@inject ThemeService Theme
+@inject SettingsStore Prefs
+@inject IJSRuntime JS
+
+<div class="page page-wide">
+    <div class="grid" style="grid-template-columns:220px 1fr;align-items:start;">
+        @* left nav *@
+        <div class="card" style="padding:7px;">
+            @foreach (var (key, label, icon) in Menu)
+            {
+                var active = _panel == key;
+                var danger = key == "danger";
+                var color = active ? (danger ? "var(--down)" : "var(--pri-2)") : (danger ? "var(--down)" : "var(--text-2)");
+                var bg = active ? (danger ? "var(--down-soft)" : "var(--pri-soft)") : "transparent";
+                <button class="nav-item @(active ? "active" : "")" style="@($"height:40px;padding:0 12px;justify-content:flex-start;color:{color};background:{bg};")" @onclick="() => _panel = key">
+                    <Icon Name="@icon" Width="17" Height="17" /><span style="font-size:0.88rem;font-weight:550;">@label</span>
+                </button>
+            }
+        </div>
+
+        @* right panel *@
+        <div>
+            @if (_panel == "accounts")
+            {
+                <SettingsPanel IconName="wallet" Title="Accounts">
+                    <Action><button class="btn btn-pri btn-sm" @onclick="() => ShowAccount(null)"><Icon Name="plus" /> Add</button></Action>
+                    <ChildContent>
+                        @if (_accounts.Count == 0)
+                        {
+                            <div class="empty-state"><Icon Name="wallet" /><p>No accounts.</p></div>
+                        }
+                        @foreach (var a in _accounts)
+                        {
+                            <SettingsRow Title="@a.Name" Sub="@($"{a.Type} · {a.Currency}{(string.IsNullOrEmpty(a.Description) ? "" : " · " + a.Description)}")">
+                                <button class="btn-icon btn-sm" style="width:32px;height:32px;color:var(--pri-2);" title="Edit" @onclick="() => ShowAccount(a)"><Icon Name="edit" Width="15" Height="15" /></button>
+                                <button class="btn-icon btn-sm" style="width:32px;height:32px;color:var(--down);" title="Delete" @onclick="() => DeleteAccount(a.Id)"><Icon Name="trash" Width="15" Height="15" /></button>
+                            </SettingsRow>
+                        }
+                    </ChildContent>
+                </SettingsPanel>
+            }
+            else if (_panel == "goals")
+            {
+                <SettingsPanel IconName="goals" Title="Goals">
+                    <Action>
+                        <button class="btn btn-danger btn-sm" @onclick="RemoveAllGoals"><Icon Name="trash" /> Remove All</button>
+                        <button class="btn btn-pri btn-sm" @onclick="() => ShowGoal(null)"><Icon Name="plus" /> Add</button>
+                    </Action>
+                    <ChildContent>
+                        @if (_goals.Count == 0)
+                        {
+                            <div class="empty-state"><Icon Name="goals" /><p>No goals.</p></div>
+                        }
+                        @foreach (var g in _goals)
+                        {
+                            var progress = g.TargetAmount > 0 ? Math.Min(100, _wealth / g.TargetAmount * 100) : 0;
+                            <SettingsRow Title="@g.Title" Sub="@($"{progress.ToString("F0")}% · target {Format.Money(g.TargetAmount, _base)} · {Format.Date(g.TargetDate)}")">
+                                <button class="btn-icon btn-sm" style="width:32px;height:32px;color:var(--pri-2);" title="Edit" @onclick="() => ShowGoal(g)"><Icon Name="edit" Width="15" Height="15" /></button>
+                                <button class="btn-icon btn-sm" style="width:32px;height:32px;color:var(--down);" title="Delete" @onclick="() => DeleteGoal(g.Id)"><Icon Name="trash" Width="15" Height="15" /></button>
+                            </SettingsRow>
+                        }
+                    </ChildContent>
+                </SettingsPanel>
+            }
+            else if (_panel == "tags")
+            {
+                <SettingsPanel IconName="tag" Title="Tags">
+                    <Action><button class="btn btn-pri btn-sm" @onclick="() => ShowTag(null)"><Icon Name="plus" /> Add</button></Action>
+                    <ChildContent>
+                        @if (_tags.Count == 0)
+                        {
+                            <div class="empty-state"><Icon Name="tag" /><p>No tags.</p></div>
+                        }
+                        @foreach (var t in _tags)
+                        {
+                            <SettingsRow>
+                                <span class="chip" style="@($"margin-right:auto;color:{t.Color};background:color-mix(in srgb,{t.Color} 14%, transparent);")"><i style="@($"width:8px;height:8px;border-radius:3px;background:{t.Color};margin-right:6px;")"></i>@t.Name</span>
+                                <button class="btn-icon btn-sm" style="width:32px;height:32px;color:var(--pri-2);" title="Edit" @onclick="() => ShowTag(t)"><Icon Name="edit" Width="15" Height="15" /></button>
+                                <button class="btn-icon btn-sm" style="width:32px;height:32px;color:var(--down);" title="Delete" @onclick="() => DeleteTag(t.Id)"><Icon Name="trash" Width="15" Height="15" /></button>
+                            </SettingsRow>
+                        }
+                    </ChildContent>
+                </SettingsPanel>
+            }
+            else if (_panel == "currencies")
+            {
+                <SettingsPanel IconName="swap" Title="Currency Rates">
+                    <Action><button class="btn btn-pri btn-sm" @onclick="() => ShowRate(null)"><Icon Name="plus" /> Add</button></Action>
+                    <ChildContent>
+                        @if (_rates.Count == 0)
+                        {
+                            <div class="empty-state"><Icon Name="swap" /><p>No currency rates.</p></div>
+                        }
+                        @foreach (var r in _rates)
+                        {
+                            <SettingsRow Title="@($"{r.FromCurrency} → {r.ToCurrency}")" Sub="@($"Rate: {r.Rate}")">
+                                <button class="btn-icon btn-sm" style="width:32px;height:32px;color:var(--pri-2);" title="Edit" @onclick="() => ShowRate(r)"><Icon Name="edit" Width="15" Height="15" /></button>
+                                <button class="btn-icon btn-sm" style="width:32px;height:32px;color:var(--down);" title="Delete" @onclick="() => DeleteRate(r.Id)"><Icon Name="trash" Width="15" Height="15" /></button>
+                            </SettingsRow>
+                        }
+                    </ChildContent>
+                </SettingsPanel>
+            }
+            else if (_panel == "database")
+            {
+                <SettingsPanel IconName="database" Title="Database">
+                    <div class="field">
+                        <label>Database path</label>
+                        <input class="input" type="text" @bind="_dbPath" placeholder="/path/to/capitrack.db" />
+                    </div>
+                    <p class="sub mt-2" style="@(_dbHealthy ? "color:var(--up);" : null)">@_dbStatus</p>
+                    <div class="flex gap-2 mt-4">
+                        <button class="btn btn-pri btn-sm" @onclick="SaveDbPath"><Icon Name="check" /> Save Path</button>
+                        <button class="btn btn-ghost btn-sm" @onclick="RefreshPlatform"><Icon Name="refresh" /> Refresh Platform</button>
+                    </div>
+                </SettingsPanel>
+            }
+            else if (_panel == "appearance")
+            {
+                <SettingsPanel IconName="palette" Title="Appearance">
+                    <div style="font-weight:600;font-size:0.9rem;margin-bottom:12px;">Theme</div>
+                    <div class="flex gap-3">
+                        @foreach (var (t, ic, l) in Themes)
+                        {
+                            var sel = Theme.Theme == t;
+                            <button class="card card-pad" style="@($"flex:1;cursor:pointer;border-color:{(sel ? "var(--pri)" : "var(--border)")};background:{(sel ? "var(--pri-soft)" : "var(--surface-2)")};display:flex;flex-direction:column;align-items:center;gap:10px;padding:20px;")" @onclick="() => Theme.SetThemeAsync(t)">
+                                <Icon Name="@ic" Width="26" Height="26" />
+                                <span style="@($"font-weight:650;color:{(sel ? "var(--pri-2)" : "var(--text)")};")">@l</span>
+                            </button>
+                        }
+                    </div>
+                    <SettingsRow Title="Main currency" Sub="All dashboard values are shown in this currency">
+                        <select class="input" style="width:200px;" value="@_base" @onchange="ChangeCurrency">
+                            @foreach (var c in CurrencyOptions)
+                            {
+                                <option value="@c.Key">@c.Value</option>
+                            }
+                        </select>
+                    </SettingsRow>
+                    <SettingsRow Title="Show transaction dots on charts" Sub="Mark buy/sell points on price charts">
+                        <button type="button" role="switch" aria-checked="@(Prefs.ShowTransactionDots ? "true" : "false")" @onclick="ToggleDots"
+                                style="@($"width:42px;height:24px;border-radius:99px;border:none;cursor:pointer;padding:0;position:relative;transition:background var(--tr);background:{(Prefs.ShowTransactionDots ? "var(--pri)" : "var(--surface-3)")};")">
+                            <i style="@($"position:absolute;top:3px;left:{(Prefs.ShowTransactionDots ? "21px" : "3px")};width:18px;height:18px;border-radius:50%;background:#fff;transition:left var(--tr);box-shadow:0 1px 3px rgba(0,0,0,0.3);")"></i>
+                        </button>
+                    </SettingsRow>
+                </SettingsPanel>
+            }
+            else if (_panel == "security")
+            {
+                <SettingsPanel IconName="lock" Title="Security">
+                    <form class="flex-col gap-4" style="max-width:420px;" @onsubmit="ChangePassword" @onsubmit:preventDefault>
+                        <div class="field"><label>Current password</label><input class="input" type="password" @bind="_curPw" /></div>
+                        <div class="field"><label>New password</label><input class="input" type="password" placeholder="At least 8 characters" @bind="_newPw" /></div>
+                        <div class="field"><label>Confirm new password</label><input class="input" type="password" placeholder="Repeat new password" @bind="_confirmPw" /></div>
+                        <button type="submit" class="btn btn-pri" style="align-self:flex-start;"><Icon Name="check" /> Update password</button>
+                        @if (_pwMsg is not null)
+                        {
+                            <p class="sub" style="@(_pwOk ? "color:var(--up);" : "color:var(--down);")">@_pwMsg</p>
+                        }
+                    </form>
+                </SettingsPanel>
+            }
+            else if (_panel == "about")
+            {
+                <SettingsPanel IconName="info" Title="About">
+                    <div class="flex-col gap-3" style="align-items:center;text-align:center;padding:20px 0;">
+                        <Logo Size="56" />
+                        <div>
+                            <div style="font-weight:700;font-size:1.3rem;"><b style="font-weight:800;">Capi</b>track</div>
+                            <div class="sub">Version @_version · MIT License</div>
+                        </div>
+                        <p class="sub" style="max-width:380px;">Open-source, self-hosted wealth tracking for everyone. Your portfolio, your server, your data.</p>
+                        <a class="btn btn-ghost btn-sm" href="https://github.com/jeff-nasseri/Capitrack" target="_blank" rel="noopener"><Icon Name="external" /> View on GitHub</a>
+                    </div>
+                </SettingsPanel>
+            }
+            else if (_panel == "danger")
+            {
+                <div class="card" style="overflow:hidden;border-color:var(--down);">
+                    <div class="flex gap-2" style="padding:14px 18px;border-bottom:1px solid var(--down);background:var(--down-soft);font-weight:700;font-size:0.95rem;color:var(--down);"><Icon Name="skull" Width="17" Height="17" /> Danger Zone</div>
+                    <div style="padding:18px;">
+                        <SettingsRow Title="Purge all data" Sub="Delete every account, transaction and goal. Cannot be undone.">
+                            <button class="btn btn-sm" style="background:var(--down);color:#fff;" @onclick="Purge"><Icon Name="trash" /> Purge</button>
+                        </SettingsRow>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    private static readonly (string Key, string Label, string Icon)[] Menu =
+    [
+        ("accounts", "Accounts", "wallet"), ("goals", "Goals", "goals"), ("tags", "Tags", "tag"),
+        ("currencies", "Currency Rates", "swap"), ("database", "Database", "database"),
+        ("appearance", "Appearance", "palette"), ("security", "Security", "lock"),
+        ("about", "About", "info"), ("danger", "Danger Zone", "skull")
+    ];
+
+    private static readonly (string Value, string Icon, string Label)[] Themes =
+    [
+        ("dark", "moon", "Dark"), ("light", "sun", "Light")
+    ];
+
+    private static readonly Dictionary<string, string> CurrencyOptions = new()
+    {
+        ["EUR"] = "EUR - Euro", ["USD"] = "USD - US Dollar", ["GBP"] = "GBP - British Pound",
+        ["CHF"] = "CHF - Swiss Franc", ["JPY"] = "JPY - Japanese Yen", ["CAD"] = "CAD - Canadian Dollar",
+        ["AUD"] = "AUD - Australian Dollar", ["CNY"] = "CNY - Chinese Yuan"
+    };
+
+    private string _panel = "accounts";
+    private List<AccountDto> _accounts = [];
+    private List<GoalDto> _goals = [];
+    private List<TagDto> _tags = [];
+    private List<CurrencyRateDto> _rates = [];
+    private double _wealth;
+    private string _base = "EUR";
+    private string _version = "1.0.0";
+    private string _dbPath = "", _dbStatus = "";
+    private bool _dbHealthy;
+    private string _curPw = "", _newPw = "", _confirmPw = "";
+    private string? _pwMsg;
+    private bool _pwOk;
+
+    protected override async Task OnInitializedAsync()
+    {
+        TopBar.Set("Settings");
+        var session = await Api.GetAsync<SessionDto>("/api/auth/session");
+        _base = session?.BaseCurrency ?? "EUR";
+        var about = await Api.GetAsync<AboutDto>("/api/settings/about");
+        _version = about?.Version ?? "1.0.0";
+        var db = await Api.GetAsync<DatabaseInfoDto>("/api/settings/database");
+        if (db is not null)
+        {
+            _dbPath = db.Path;
+            _dbHealthy = db.Exists;
+            _dbStatus = db.Exists ? "Database file exists and is accessible." : "Database file will be created at this location.";
+        }
+        await LoadAll();
+    }
+
+    private async Task LoadAll()
+    {
+        var accountsTask = Api.GetAsync<List<AccountDto>>("/api/accounts");
+        var goalsTask = Api.GetAsync<List<GoalDto>>("/api/goals");
+        var tagsTask = Api.GetAsync<List<TagDto>>("/api/tags");
+        var ratesTask = Api.GetAsync<List<CurrencyRateDto>>("/api/currencies");
+        var summaryTask = Api.GetAsync<DashboardSummaryDto>("/api/prices/dashboard/summary");
+        await Task.WhenAll(accountsTask, goalsTask, tagsTask, ratesTask, summaryTask);
+        _accounts = await accountsTask ?? [];
+        _goals = await goalsTask ?? [];
+        _tags = await tagsTask ?? [];
+        _rates = await ratesTask ?? [];
+        var summary = await summaryTask;
+        _wealth = summary?.TotalWealth ?? 0;
+        _base = summary?.BaseCurrency ?? _base;
+        StateHasChanged();
+    }
+
+    // ---- Accounts ----
+    private void ShowAccount(AccountDto? a)
+    {
+        var model = new AccountFormModel
+        {
+            Id = a?.Id, Name = a?.Name ?? "", Type = a?.Type ?? "general", Currency = a?.Currency ?? "EUR",
+            Icon = a?.Icon ?? "wallet", Color = a?.Color ?? "#6366f1", Description = a?.Description ?? "",
+            TagIds = a?.Tags.Select(t => t.Id).ToHashSet() ?? []
+        };
+        Modal.Show(a is null ? "Add Account" : "Edit Account", @<AccountForm Model="model" Tags="_tags" OnSave="() => SaveAccount(model)" />);
+    }
+
+    private async Task SaveAccount(AccountFormModel m)
+    {
+        var body = new { name = m.Name, type = m.Type, currency = m.Currency, description = m.Description, icon = m.Icon, color = m.Color, tag_ids = m.TagIds.ToList() };
+        if (m.Id is int id) await Api.PutAsync<AccountDto>($"/api/accounts/{id}", body);
+        else await Api.PostAsync<AccountDto>("/api/accounts", body);
+        Modal.Close();
+        Toast.Show(m.Id is null ? "Account created" : "Account updated", "success");
+        await LoadAll();
+    }
+
+    private async Task DeleteAccount(int id)
+    {
+        if (!await JS.InvokeAsync<bool>("capitrack.confirm", "Delete this account and all its transactions?")) return;
+        await Api.DeleteAsync<object>($"/api/accounts/{id}");
+        Toast.Show("Account deleted", "success");
+        await LoadAll();
+    }
+
+    // ---- Goals ----
+    private void ShowGoal(GoalDto? g)
+    {
+        var model = new GoalFormModel
+        {
+            Id = g?.Id, Title = g?.Title ?? "", TargetAmount = g?.TargetAmount, TargetDate = g?.TargetDate.Split('T')[0] ?? "",
+            Description = g?.Description ?? "", Achieved = g is not null && g.Achieved != 0, TagIds = g?.Tags.Select(t => t.Id).ToHashSet() ?? []
+        };
+        Modal.Show(g is null ? "Add Goal" : "Edit Goal", @<GoalForm Model="model" Tags="_tags" OnSave="() => SaveGoal(model)" />);
+    }
+
+    private async Task SaveGoal(GoalFormModel m)
+    {
+        var body = new { title = m.Title, target_amount = m.TargetAmount ?? 0, target_date = m.TargetDate, description = m.Description, achieved = m.Achieved, tag_ids = m.TagIds.ToList() };
+        if (m.Id is int id) await Api.PutAsync<GoalDto>($"/api/goals/{id}", body);
+        else await Api.PostAsync<GoalDto>("/api/goals", body);
+        Modal.Close();
+        Toast.Show(m.Id is null ? "Goal created" : "Goal updated", "success");
+        await LoadAll();
+    }
+
+    private async Task DeleteGoal(int id)
+    {
+        if (!await JS.InvokeAsync<bool>("capitrack.confirm", "Delete this goal?")) return;
+        await Api.DeleteAsync<object>($"/api/goals/{id}");
+        Toast.Show("Goal deleted", "success");
+        await LoadAll();
+    }
+
+    private async Task RemoveAllGoals()
+    {
+        if (!await JS.InvokeAsync<bool>("capitrack.confirm", "WARNING: This will permanently delete ALL goals. This action cannot be undone.\n\nAre you sure?")) return;
+        if (!await JS.InvokeAsync<bool>("capitrack.confirm", "Final confirmation: All goals will be permanently deleted.")) return;
+        await Api.DeleteAsync<object>("/api/goals");
+        Toast.Show("All goals removed", "success");
+        await LoadAll();
+    }
+
+    // ---- Tags ----
+    private void ShowTag(TagDto? t)
+    {
+        var model = new TagFormModel { Id = t?.Id, Name = t?.Name ?? "", Color = t?.Color ?? "#6366f1" };
+        Modal.Show(t is null ? "Add Tag" : "Edit Tag", @<TagForm Model="model" OnSave="() => SaveTag(model)" />);
+    }
+
+    private async Task SaveTag(TagFormModel m)
+    {
+        var body = new { name = m.Name, color = m.Color };
+        if (m.Id is int id) await Api.PutAsync<TagDto>($"/api/tags/{id}", body);
+        else await Api.PostAsync<TagDto>("/api/tags", body);
+        Modal.Close();
+        Toast.Show(m.Id is null ? "Tag created" : "Tag updated", "success");
+        await LoadAll();
+    }
+
+    private async Task DeleteTag(int id)
+    {
+        if (!await JS.InvokeAsync<bool>("capitrack.confirm", "Delete this tag?")) return;
+        await Api.DeleteAsync<object>($"/api/tags/{id}");
+        Toast.Show("Tag deleted", "success");
+        await LoadAll();
+    }
+
+    // ---- Rates ----
+    private void ShowRate(CurrencyRateDto? r)
+    {
+        var model = new RateFormModel { Id = r?.Id, FromCurrency = r?.FromCurrency ?? "", ToCurrency = r?.ToCurrency ?? "", Rate = r?.Rate };
+        Modal.Show(r is null ? "Add Rate" : "Edit Rate", @<RateForm Model="model" OnSave="() => SaveRate(model)" />);
+    }
+
+    private async Task SaveRate(RateFormModel m)
+    {
+        var body = new { from_currency = m.FromCurrency, to_currency = m.ToCurrency, rate = m.Rate ?? 0 };
+        if (m.Id is int id) await Api.PutAsync<CurrencyRateDto>($"/api/currencies/{id}", body);
+        else await Api.PostAsync<CurrencyRateDto>("/api/currencies", body);
+        Modal.Close();
+        Toast.Show(m.Id is null ? "Rate added" : "Rate updated", "success");
+        await LoadAll();
+    }
+
+    private async Task DeleteRate(int id)
+    {
+        if (!await JS.InvokeAsync<bool>("capitrack.confirm", "Delete this rate?")) return;
+        await Api.DeleteAsync<object>($"/api/currencies/{id}");
+        Toast.Show("Rate deleted", "success");
+        await LoadAll();
+    }
+
+    // ---- Appearance ----
+    private async Task ChangeCurrency(ChangeEventArgs e)
+    {
+        var cur = e.Value?.ToString() ?? "EUR";
+        _base = cur;
+        await Api.PutAsync<object>("/api/auth/currency", new { base_currency = cur });
+        if (State.User is not null) State.User.BaseCurrency = cur;
+        Toast.Show("Main currency updated", "success");
+        await LoadAll();
+    }
+
+    private async Task ToggleDots() => await Prefs.SetShowTransactionDots(!Prefs.ShowTransactionDots);
+
+    // ---- Security ----
+    private async Task ChangePassword()
+    {
+        _pwMsg = null;
+        if (_newPw != _confirmPw) { _pwOk = false; _pwMsg = "Passwords do not match"; return; }
+        var (ok, json) = await Api.PutWithStatusAsync<JsonElement>("/api/auth/password",
+            new { currentPassword = _curPw, newPassword = _newPw }, ApiClient.RawJson);
+        if (ok) { _pwOk = true; _pwMsg = "Password updated"; _curPw = _newPw = _confirmPw = ""; }
+        else { _pwOk = false; _pwMsg = json.TryGetProperty("error", out var er) ? er.GetString() : "Failed to update"; }
+    }
+
+    // ---- Database ----
+    private async Task SaveDbPath()
+    {
+        if (string.IsNullOrEmpty(_dbPath)) { Toast.Show("Database path required", "error"); return; }
+        var res = await Api.PutAsync<DatabaseInfoDto>("/api/settings/database", new { path = _dbPath });
+        if (res is not null) { _dbStatus = "Database path updated successfully (restart to take effect)."; _dbHealthy = true; Toast.Show("Database path saved", "success"); }
+    }
+
+    private async Task RefreshPlatform()
+    {
+        if (!await JS.InvokeAsync<bool>("capitrack.confirm", "Refresh the platform with the current database?")) return;
+        await Api.PostAsync<object>("/api/settings/refresh", new { });
+        await JS.InvokeVoidAsync("capitrack.reload");
+    }
+
+    // ---- Danger ----
+    private async Task Purge()
+    {
+        if (!await JS.InvokeAsync<bool>("capitrack.confirm", "WARNING: This will permanently delete ALL accounts, transactions, goals, and cached data. This action cannot be undone.\n\nAre you absolutely sure?")) return;
+        if (!await JS.InvokeAsync<bool>("capitrack.confirm", "Final confirmation: Type OK to proceed.\n\nAll data will be lost permanently.")) return;
+        await Api.DeleteAsync<object>("/api/accounts/purge/all");
+        State.Accounts = []; State.AllHoldings = []; State.DashboardSummary = null;
+        Toast.Show("All data has been purged", "success");
+        await LoadAll();
+    }
+}

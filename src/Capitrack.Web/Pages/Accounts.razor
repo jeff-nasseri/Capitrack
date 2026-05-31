@@ -1,0 +1,105 @@
+@page "/accounts"
+@inject ApiClient Api
+@inject AppState State
+@inject ModalService Modal
+@inject ToastService Toast
+@inject TopBarState TopBar
+@inject NavigationManager Nav
+
+<div class="page">
+    <div class="grid" style="grid-template-columns:repeat(3, 1fr);">
+        @foreach (var a in _accounts)
+        {
+            var sa = _values.GetValueOrDefault(a.Id);
+            var value = sa?.MarketValue ?? 0;
+            var cost = sa?.CostBasis ?? 0;
+            var holdings = sa?.HoldingsCount ?? 0;
+            var gain = value - cost;
+            var gp = cost > 0 ? gain / cost * 100 : 0;
+            <div class="card card-pad card-hover" @onclick="() => Open(a.Id)">
+                <div class="row-between" style="align-items:flex-start;">
+                    <div class="flex gap-3">
+                        <div class="coin coin-lg" style="border-radius:13px;background:linear-gradient(145deg, @a.Color, @Coins.Shade(a.Color, -20));"><Icon Name="@AcctIcon(a.Icon)" Width="22" Height="22" /></div>
+                        <div>
+                            <div style="font-weight:700;white-space:nowrap;">@a.Name</div>
+                            <div class="sub">@holdings holding@(holdings != 1 ? "s" : "")</div>
+                        </div>
+                    </div>
+                    <span class="chip">@a.Type</span>
+                </div>
+                <div class="flex row-between mt-4" style="align-items:flex-end;">
+                    <div>
+                        <div class="bignum tnum" style="font-size:1.7rem;">@Format.Money(value, a.Currency)</div>
+                        <div class="flex gap-2 mt-1">
+                            <span class="delta @(gain >= 0 ? "up" : "down")" style="font-size:0.82rem;">@Format.Signed(gain, a.Currency, 0)</span>
+                            <span class="delta @(gp >= 0 ? "up" : "down")" style="font-size:0.82rem;">@Format.Pct(gp, 1)</span>
+                        </div>
+                    </div>
+                    <Sparkline Data="Series.AccountSeries(a.Id, cost, value)" Up="@(gp >= 0)" W="92" H="36" />
+                </div>
+                <div class="flex row-between mt-4" style="padding-top:12px;border-top:1px solid var(--hairline);">
+                    <span class="sub">Cost basis @Format.Money(cost, a.Currency, 0)</span>
+                    <span class="sub">@a.Currency</span>
+                </div>
+            </div>
+        }
+        <button class="card card-pad" style="display:grid;place-items:center;min-height:200px;border:1.5px dashed var(--border-2);background:transparent;cursor:pointer;color:var(--text-3);" @onclick="ShowAddAccount">
+            <div class="flex-col gap-2" style="align-items:center;">
+                <div class="btn-icon" style="width:46px;height:46px;border-radius:14px;"><Icon Name="plus" /></div>
+                <span style="font-weight:600;font-size:0.9rem;">Add account</span>
+            </div>
+        </button>
+    </div>
+</div>
+
+@code {
+    private List<AccountDto> _accounts = [];
+    private Dictionary<int, AccountSummaryDto> _values = [];
+    private List<TagDto> _tags = [];
+
+    private RenderFragment Actions => @<button class="btn btn-pri btn-sm" @onclick="ShowAddAccount"><Icon Name="plus" /> Add account</button>;
+
+    protected override async Task OnInitializedAsync()
+    {
+        TopBar.Set("Accounts", Actions);
+        await Load();
+    }
+
+    private async Task Load()
+    {
+        var accountsTask = Api.GetAsync<List<AccountDto>>("/api/accounts");
+        var summaryTask = Api.GetAsync<DashboardSummaryDto>("/api/prices/dashboard/summary");
+        await Task.WhenAll(accountsTask, summaryTask);
+        _accounts = await accountsTask ?? [];
+        State.Accounts = _accounts;
+        _values = (await summaryTask)?.Accounts.ToDictionary(a => a.AccountId) ?? [];
+    }
+
+    private void Open(int id) => Nav.NavigateTo($"/accounts/{id}");
+
+    private static string AcctIcon(string icon) => icon switch
+    {
+        "bitcoin" => "bitcoin",
+        "gem" => "gem",
+        _ => "trend"
+    };
+
+    private async Task ShowAddAccount()
+    {
+        _tags = await Api.GetAsync<List<TagDto>>("/api/tags") ?? [];
+        var model = new AccountFormModel();
+        Modal.Show("Add Account", @<AccountForm Model="model" Tags="_tags" OnSave="() => SaveAccount(model)" />);
+    }
+
+    private async Task SaveAccount(AccountFormModel m)
+    {
+        await Api.PostAsync<AccountDto>("/api/accounts", new
+        {
+            name = m.Name, type = m.Type, currency = m.Currency, description = m.Description,
+            icon = m.Icon, color = m.Color, tag_ids = m.TagIds.ToList()
+        });
+        Modal.Close();
+        Toast.Show("Account created", "success");
+        await Load();
+    }
+}

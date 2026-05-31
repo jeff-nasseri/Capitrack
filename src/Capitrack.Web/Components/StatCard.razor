@@ -1,0 +1,25 @@
+<div class="card card-pad">
+    <div class="eyebrow">@Label</div>
+    <div class="flex row-between" style="align-items:flex-end;margin-top:8px;">
+        <div>
+            <div class="tnum" style="font-size:1.45rem;font-weight:750;letter-spacing:-0.02em;">@Value</div>
+            @if (Delta is not null)
+            {
+                <div class="delta @(DeltaUp ? "up" : "down")" style="font-size:0.8rem;margin-top:3px;">@Delta</div>
+            }
+        </div>
+        @if (Spark is not null)
+        {
+            <Sparkline Data="Spark" Up="SparkUp" />
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public string Label { get; set; } = "";
+    [Parameter] public string Value { get; set; } = "";
+    [Parameter] public string? Delta { get; set; }
+    [Parameter] public bool DeltaUp { get; set; } = true;
+    [Parameter] public double[]? Spark { get; set; }
+    [Parameter] public bool SparkUp { get; set; } = true;
+}

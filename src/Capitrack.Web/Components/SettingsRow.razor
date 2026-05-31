@@ -1,0 +1,19 @@
+<div class="flex row-between" style="padding:12px 0;border-bottom:1px solid var(--hairline);">
+    <div>
+        @if (Title is not null)
+        {
+            <div style="font-weight:600;font-size:0.9rem;">@Title</div>
+        }
+        @if (Sub is not null)
+        {
+            <div class="sub">@Sub</div>
+        }
+    </div>
+    <div class="flex gap-2" style="align-items:center;">@ChildContent</div>
+</div>
+
+@code {
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public string? Sub { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

@@ -1,0 +1,109 @@
+@implements IDisposable
+@inject ModalService Modal
+@inject ApiClient Api
+@inject AppState State
+@inject ToastService Toast
+
+@if (Modal.ImportVisible)
+{
+    <div class="modal-overlay" @onclick="Close">
+        <div class="modal" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h3>Import transactions</h3>
+                <button class="btn-icon" @onclick="Close"><Icon Name="x" /></button>
+            </div>
+            <div class="modal-body">
+                <p class="sub" style="line-height:1.6;margin-bottom:14px;">
+                    <strong style="color:var(--text-2);">Supported formats:</strong> Revolut Stocks, Revolut Commodities, Trezor, or generic CSV.
+                    The format is auto-detected and duplicate rows are skipped.
+                </p>
+                <div class="field">
+                    <label>CSV file</label>
+                    <InputFile OnChange="OnFileSelected" accept=".csv" class="input" style="padding:9px 13px;height:auto;" />
+                </div>
+                @if (_formatName is not null)
+                {
+                    <div class="mt-2" style="margin-bottom:14px;">
+                        <span class="chip @(_isKnown ? "up" : "warn")"><Icon Name="@(_isKnown ? "check" : "info")" Width="13" Height="13" /> @_formatName</span>
+                    </div>
+                }
+                <button class="btn btn-pri btn-block mt-2" @onclick="DoImport" disabled="@(_file is null || _busy)">
+                    <Icon Name="upload" /> Import
+                </button>
+                @if (_result is not null)
+                {
+                    <div class="@(_result.Error is null ? "success-message" : "error-message")" style="margin-top:14px;">
+                        @if (_result.Error is null)
+                        {
+                            <strong>Import complete.</strong> @($"Imported {_result.Imported} · Skipped {_result.Skipped} · Total {_result.Total}")
+                        }
+                        else
+                        {
+                            @_result.Error
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private IBrowserFile? _file;
+    private string? _formatName;
+    private bool _isKnown;
+    private ImportResultDto? _result;
+    private bool _busy;
+
+    private static readonly Dictionary<string, string> FormatNames = new()
+    {
+        ["revolut-stocks"] = "Revolut Stocks",
+        ["revolut-commodities"] = "Revolut Commodities",
+        ["trezor"] = "Trezor Wallet",
+        ["generic"] = "Generic CSV",
+        ["unknown"] = "Unknown format"
+    };
+
+    protected override void OnInitialized() => Modal.OnChange += Refresh;
+    private void Refresh() => InvokeAsync(StateHasChanged);
+
+    private void Close()
+    {
+        _file = null; _formatName = null; _result = null;
+        Modal.CloseImport();
+    }
+
+    private async Task OnFileSelected(InputFileChangeEventArgs e)
+    {
+        _file = e.File;
+        _result = null;
+        try
+        {
+            using var content = new MultipartFormDataContent();
+            content.Add(new StreamContent(_file.OpenReadStream(10 * 1024 * 1024)), "file", _file.Name);
+            var detect = await Api.PostFormAsync<DetectResultDto>("/api/transactions/import/detect", content);
+            var fmt = detect?.Format ?? "unknown";
+            _isKnown = fmt != "unknown";
+            _formatName = FormatNames.GetValueOrDefault(fmt, fmt);
+        }
+        catch { _formatName = null; }
+    }
+
+    private async Task DoImport()
+    {
+        if (_file is null || State.CurrentAccountId is null) return;
+        _busy = true;
+        try
+        {
+            using var content = new MultipartFormDataContent();
+            content.Add(new StreamContent(_file.OpenReadStream(10 * 1024 * 1024)), "file", _file.Name);
+            content.Add(new StringContent(State.CurrentAccountId.Value.ToString()), "account_id");
+            _result = await Api.PostFormAsync<ImportResultDto>("/api/transactions/import/csv", content);
+            if (_result is not null && _result.Error is null) Modal.RaiseImported();
+        }
+        catch { Toast.Show("Import failed", "error"); }
+        finally { _busy = false; }
+    }
+
+    public void Dispose() => Modal.OnChange -= Refresh;
+}

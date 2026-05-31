@@ -1,0 +1,112 @@
+@page "/activity"
+@inject ApiClient Api
+@inject ModalService Modal
+@inject ToastService Toast
+@inject TopBarState TopBar
+@inject IJSRuntime JS
+
+<div class="page page-wide">
+    <div class="flex gap-2" style="margin-bottom:14px;flex-wrap:wrap;">
+        <div style="position:relative;">
+            <span style="position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--text-4);"><Icon Name="search" Width="16" Height="16" /></span>
+            <input class="input btn-sm" style="height:36px;width:220px;padding-left:34px;" placeholder="Search symbol" value="@_search" @oninput="OnSearch" />
+        </div>
+        <select class="input btn-sm" style="height:36px;width:auto;padding-right:28px;" value="@_acct" @onchange="OnAcct">
+            <option value="All">All accounts</option>
+            @foreach (var a in _accounts)
+            {
+                <option value="@a.Name">@a.Name</option>
+            }
+        </select>
+        <select class="input btn-sm" style="height:36px;width:auto;padding-right:28px;" value="@_type" @onchange="OnType">
+            <option value="All">All types</option>
+            <option value="buy">Buy</option>
+            <option value="sell">Sell</option>
+            <option value="dividend">Dividend</option>
+            <option value="transfer_in">Transfer in</option>
+        </select>
+        <span class="sub" style="margin-left:auto;align-self:center;">@_filtered.Count transactions</span>
+    </div>
+
+    @if (_loading)
+    {
+        <div class="loading-spinner">Loading…</div>
+    }
+    else
+    {
+        <ActivityTable Transactions="_filtered" OnEdit="EditTx" OnDelete="DeleteTx" />
+    }
+</div>
+
+@code {
+    private List<TransactionDto> _transactions = [];
+    private List<AccountDto> _accounts = [];
+    private List<TagDto> _tags = [];
+    private bool _loading = true;
+    private string _search = "";
+    private string _acct = "All";
+    private string _type = "All";
+
+    private List<TransactionDto> _filtered =>
+        _transactions.Where(t =>
+            (_acct == "All" || t.AccountName == _acct) &&
+            (_type == "All" || t.Type == _type) &&
+            (_search == "" || (t.Symbol ?? "").Contains(_search, StringComparison.OrdinalIgnoreCase)))
+        .ToList();
+
+    protected override async Task OnInitializedAsync()
+    {
+        TopBar.Set("Activity", Actions);
+        await Load();
+    }
+
+    private RenderFragment Actions => @<button class="btn btn-ghost btn-sm" @onclick="Export"><Icon Name="download" /> Export</button>;
+
+    private async Task Load()
+    {
+        var txTask = Api.GetAsync<List<TransactionDto>>("/api/transactions?limit=200");
+        var acctTask = Api.GetAsync<List<AccountDto>>("/api/accounts");
+        await Task.WhenAll(txTask, acctTask);
+        _transactions = await txTask ?? [];
+        _accounts = await acctTask ?? [];
+        _loading = false;
+    }
+
+    private void OnSearch(ChangeEventArgs e) => _search = e.Value?.ToString() ?? "";
+    private void OnAcct(ChangeEventArgs e) => _acct = e.Value?.ToString() ?? "All";
+    private void OnType(ChangeEventArgs e) => _type = e.Value?.ToString() ?? "All";
+
+    private void Export() => JS.InvokeVoidAsync("capitrack.go", "/api/transactions/export/csv");
+
+    private async Task EditTx(TransactionDto tx)
+    {
+        _tags = await Api.GetAsync<List<TagDto>>("/api/tags") ?? [];
+        var model = new TransactionFormModel
+        {
+            Id = tx.Id, Symbol = tx.Symbol, Type = tx.Type, Date = tx.Date.Split('T')[0],
+            Quantity = tx.Quantity, Price = tx.Price, Fee = tx.Fee, Currency = tx.Currency, Notes = tx.Notes,
+            TagIds = tx.Tags.Select(t => t.Id).ToHashSet()
+        };
+        Modal.Show("Edit Transaction", @<TransactionForm Model="model" Tags="_tags" OnSave="() => SaveEdit(tx.Id, model)" />);
+    }
+
+    private async Task SaveEdit(int id, TransactionFormModel m)
+    {
+        await Api.PutAsync<TransactionDto>($"/api/transactions/{id}", new
+        {
+            symbol = m.Symbol, type = m.Type, date = m.Date, quantity = m.Quantity ?? 0,
+            price = m.Price ?? 0, fee = m.Fee, currency = m.Currency, notes = m.Notes, tag_ids = m.TagIds.ToList()
+        });
+        Modal.Close();
+        Toast.Show("Transaction updated", "success");
+        await Load();
+    }
+
+    private async Task DeleteTx(TransactionDto tx)
+    {
+        if (!await JS.InvokeAsync<bool>("capitrack.confirm", "Delete this transaction?")) return;
+        await Api.DeleteAsync<object>($"/api/transactions/{tx.Id}");
+        Toast.Show("Transaction deleted", "success");
+        await Load();
+    }
+}

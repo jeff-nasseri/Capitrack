@@ -1,0 +1,28 @@
+<svg width="@Size" height="@Size" viewBox="0 0 @Size @Size">
+    <circle cx="@Half" cy="@Half" r="@_r" fill="none" style="stroke:var(--surface-3)" stroke-width="@Sw"></circle>
+    <circle cx="@Half" cy="@Half" r="@_r" fill="none" style="stroke:@Color" stroke-width="@Sw" stroke-linecap="round"
+            stroke-dasharray="@_progress @_c" transform="rotate(-90 @Half @Half)"></circle>
+    @_label
+</svg>
+
+@code {
+    [Parameter] public double Pct { get; set; }
+    [Parameter] public int Size { get; set; } = 64;
+    [Parameter] public int Sw { get; set; } = 7;
+    [Parameter] public string Color { get; set; } = "var(--pri-2)";
+
+    private double Half => Size / 2.0;
+    private double _r;
+    private double _c;
+    private double _progress;
+    private MarkupString _label;
+
+    protected override void OnParametersSet()
+    {
+        _r = (Size - Sw) / 2.0;
+        _c = 2 * Math.PI * _r;
+        _progress = Math.Clamp(Pct, 0, 100) / 100 * _c;
+        var fs = (Size * 0.22).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+        _label = new MarkupString($"<text x=\"50%\" y=\"50%\" dominant-baseline=\"central\" text-anchor=\"middle\" font-size=\"{fs}\" font-weight=\"700\" style=\"fill:var(--text)\">{Math.Round(Pct)}%</text>");
+    }
+}

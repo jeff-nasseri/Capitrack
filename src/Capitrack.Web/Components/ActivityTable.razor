@@ -1,0 +1,97 @@
+@inject ModalService Modal
+@inject NavigationManager Nav
+
+@if (Transactions is null || Transactions.Count == 0)
+{
+    <div class="empty-state"><Icon Name="receipt" /><p>No transactions yet.</p></div>
+}
+else
+{
+    <div class="card" style="overflow:visible;">
+        <div style="overflow-x:auto;">
+            <table class="tbl">
+                <thead>
+                    <tr>
+                        <th style="padding-top:16px;">Date</th><th style="padding-top:16px;">Account</th><th style="padding-top:16px;">Symbol</th>
+                        <th style="padding-top:16px;">Type</th><th class="r" style="padding-top:16px;">Quantity</th>
+                        <th class="r" style="padding-top:16px;">Price</th><th class="r" style="padding-top:16px;">Total</th><th style="width:40px;"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var tx in Transactions)
+                    {
+                        <tr>
+                            <td style="white-space:nowrap;">@Format.Date(tx.Date)</td>
+                            <td class="sub">@tx.AccountName</td>
+                            <td>
+                                <div class="flex gap-2" style="cursor:pointer;" @onclick="() => OpenSymbol(tx)">
+                                    <Coin Sym="@tx.Symbol" Size="sm" /><b style="font-size:0.86rem;">@tx.Symbol</b>
+                                </div>
+                            </td>
+                            <td><TxnBadge Type="@tx.Type" /></td>
+                            <td class="r num">@Format.Shares(tx.Quantity)</td>
+                            <td class="r num">@Format.Money(tx.Price, tx.Currency)</td>
+                            <td class="r num" style="font-weight:650;">@Format.Money(tx.Quantity * tx.Price, tx.Currency)</td>
+                            <td style="position:relative;">
+                                <button class="btn-icon" style="width:30px;height:30px;background:transparent;border:none;" @onclick="() => Toggle(tx.Id)" @onclick:stopPropagation="true"><Icon Name="more" Width="16" Height="16" /></button>
+                                @if (_openId == tx.Id)
+                                {
+                                    <div class="menu-pop" @onclick:stopPropagation="true">
+                                        <button @onclick="() => ShowDetail(tx)"><Icon Name="eye" /> View detail</button>
+                                        <button @onclick="() => Edit(tx)"><Icon Name="edit" /> Edit</button>
+                                        <button class="danger" @onclick="() => Delete(tx)"><Icon Name="trash" /> Delete</button>
+                                    </div>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public IReadOnlyList<TransactionDto>? Transactions { get; set; }
+    [Parameter] public EventCallback<TransactionDto> OnEdit { get; set; }
+    [Parameter] public EventCallback<TransactionDto> OnDelete { get; set; }
+
+    private int? _openId;
+
+    private void Toggle(int id) => _openId = _openId == id ? null : id;
+    private async Task Edit(TransactionDto tx) { _openId = null; await OnEdit.InvokeAsync(tx); }
+    private async Task Delete(TransactionDto tx) { _openId = null; await OnDelete.InvokeAsync(tx); }
+    private void OpenSymbol(TransactionDto tx) => Nav.NavigateTo($"/accounts/{tx.AccountId}/{Uri.EscapeDataString(tx.Symbol)}");
+
+    private void ShowDetail(TransactionDto tx)
+    {
+        _openId = null;
+        Modal.Show("Transaction detail", DetailFragment(tx));
+    }
+
+    private RenderFragment DetailFragment(TransactionDto tx) => __builder =>
+    {
+        <div class="flex gap-3" style="margin-bottom:16px;">
+            <Coin Sym="@tx.Symbol" Size="md" />
+            <div><div style="font-weight:700;font-size:1.05rem;">@tx.Symbol</div><div class="mt-1"><TxnBadge Type="@tx.Type" /></div></div>
+        </div>
+        @Stat("Date", Format.Date(tx.Date))
+        @Stat("Quantity", Format.Shares(tx.Quantity))
+        @Stat("Price", Format.Money(tx.Price, tx.Currency))
+        @Stat("Total value", Format.Money(tx.Quantity * tx.Price, tx.Currency))
+        @Stat("Fee", tx.Fee > 0 ? Format.Money(tx.Fee, tx.Currency) : "None")
+        @Stat("Currency", string.IsNullOrEmpty(tx.Currency) ? "USD" : tx.Currency)
+        @Stat("Account", tx.AccountName ?? "—")
+        @if (!string.IsNullOrEmpty(tx.Notes))
+        {
+            @Stat("Notes", tx.Notes)
+        }
+    };
+
+    private RenderFragment Stat(string k, string v) => __builder =>
+    {
+        <div class="flex row-between" style="padding:11px 0;border-top:1px solid var(--hairline);font-size:0.86rem;">
+            <span class="sub">@k</span><span class="num" style="font-weight:650;">@v</span>
+        </div>
+    };
+}

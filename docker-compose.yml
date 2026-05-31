@@ -1,22 +1,37 @@
+# Capitrack — .NET 10 API + Blazor WebAssembly frontend.
+# One command runs both:  docker compose up -d
 services:
-  capitrack:
-    build: .
-    container_name: capitrack
+  api:
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+    container_name: capitrack-api
     restart: unless-stopped
     environment:
       - DB_PATH=/app/data/capitrack.db
-      - SESSION_SECRET=c4p1tr4ck-s3ss10n-s3cr3t-k3y-2026
-      - TRANSACTIONS_DIR=/app/transactions
-    ports:
-      - "3000:3000"
+      # Initial admin login, first run only. Configure these in a local .env file
+      # (gitignored — see .env.example). If the password is left empty a strong one
+      # is generated and printed to the logs:  docker compose logs api
+      - CAPITRACK_INIT_USERNAME=${CAPITRACK_INIT_USERNAME:-admin}
+      - CAPITRACK_INIT_PASSWORD=${CAPITRACK_INIT_PASSWORD:-}
+      - CAPITRACK_BASE_CURRENCY=${CAPITRACK_BASE_CURRENCY:-EUR}
     volumes:
-      - capitrack-data:/app/data
+      - capitrack-dotnet-data:/app/data
       - ./transactions:/app/transactions:ro
-    healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/auth/session"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+    expose:
+      - "8080"
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/web.Dockerfile
+    container_name: capitrack-web
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "3000:80"
 
 volumes:
-  capitrack-data:
+  capitrack-dotnet-data:

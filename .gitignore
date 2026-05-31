@@ -1,8 +1,9 @@
-# Dependencies
-node_modules/
-package-lock.json
-yarn.lock
-pnpm-lock.yaml
+# .NET build output
+bin/
+obj/
+*.user
+*.suo
+.vs/
 
 # Database files
 *.db
@@ -14,6 +15,9 @@ data/
 .env
 .env.local
 .env.*.local
+
+# Local-only compose overrides
+docker-compose.override.yml
 
 # Claude Code
 .claude/
@@ -33,28 +37,14 @@ desktop.ini
 # Logs
 logs/
 *.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# Build output
-dist/
-build/
-*.tsbuildinfo
-
-# Test coverage
-coverage/
-.nyc_output/
 
 # Temporary files
 tmp/
 temp/
 *.tmp
 
-# Transactions import folder (optional)
+# Transactions import folder (mounted into the api container)
 transactions/
 
-# TypeScript cache
-*.tsbuildinfo
-/TODO.txt
-/nul
+# Design source files (mockups & exports — not part of the application)
+Design Files/

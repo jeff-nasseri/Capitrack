@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Capitrack — Wealth tracker</title>
+    <base href="/" />
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23818cf8'/%3E%3Cstop offset='1' stop-color='%236366f1'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='48' height='48' rx='13' fill='url(%23g)'/%3E%3Cg transform='translate(4.6 4.6) scale(0.84)' stroke-linecap='round'%3E%3Cg opacity='0.82'%3E%3Cline x1='8.5' y1='22' x2='8.5' y2='36' stroke='%23fff' stroke-width='2'/%3E%3Crect x='6' y='26' width='7' height='7' rx='2' fill='%23fff'/%3E%3Cline x1='18.5' y1='16' x2='18.5' y2='32' stroke='%23fff' stroke-width='2'/%3E%3Crect x='15' y='20' width='7' height='9' rx='2' fill='%23fff'/%3E%3Cline x1='29.5' y1='11' x2='29.5' y2='28' stroke='%23fff' stroke-width='2'/%3E%3Crect x='26' y='14' width='7' height='10' rx='2' fill='%23fff'/%3E%3C/g%3E%3Cline x1='40.5' y1='6' x2='40.5' y2='24' stroke='%23fff' stroke-width='2'/%3E%3Crect x='37' y='9' width='7' height='11' rx='2' fill='%23fff'/%3E%3C/g%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="css/app.css" />
+    <!-- Apply persisted theme before Blazor boots to avoid a flash -->
+    <script>
+        document.documentElement.setAttribute('data-theme', localStorage.getItem('wealth-theme') || 'dark');
+    </script>
+</head>
+
+<body>
+    <div id="app">
+        <div style="height:100vh;display:grid;place-items:center;">
+            <div class="loading-spinner">Loading Capitrack…</div>
+        </div>
+    </div>
+
+    <div id="blazor-error-ui" style="display:none;position:fixed;bottom:0;left:0;right:0;background:#b91c1c;color:#fff;padding:0.75rem 1rem;z-index:9999;">
+        An unhandled error has occurred. <a href="" class="reload" style="color:#fff;text-decoration:underline;">Reload</a>
+    </div>
+
+    <script src="js/interop.js"></script>
+    <script src="_framework/blazor.webassembly.js"></script>
+</body>
+
+</html>

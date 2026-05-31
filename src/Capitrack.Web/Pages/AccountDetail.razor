@@ -1,0 +1,178 @@
+@page "/accounts/{Id:int}"
+@implements IDisposable
+@inject ApiClient Api
+@inject AppState State
+@inject ModalService Modal
+@inject ToastService Toast
+@inject TopBarState TopBar
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<div class="page page-wide">
+    @* hero *@
+    <div class="row-between" style="align-items:flex-start;">
+        <div>
+            <div class="eyebrow">@(_account?.Type) account</div>
+            <div class="bignum tnum" style="margin-top:6px;">@Format.Money(_totalValue, _base)</div>
+            <div class="flex gap-2 mt-2">
+                <span class="chip @(_gain >= 0 ? "up" : "down")">@Format.Signed(_gain, _base) · @Format.Pct(_gainPct)</span>
+                <span class="sub">all time</span>
+            </div>
+        </div>
+    </div>
+
+    @* chart *@
+    <div class="card mt-4" style="overflow:hidden;">
+        <div style="padding:16px 12px;">
+            <PeriodChart Data="_chart" Labels="_labels" Currency="@_base" Height="230" Selected="@_period" SelectedChanged="OnPeriod" />
+        </div>
+    </div>
+
+    @* KPI strip *@
+    <div class="grid mt-4" style="grid-template-columns:repeat(4, 1fr);">
+        <StatCard Label="Investments" Value="@Format.Money(_invested, _base)" />
+        <StatCard Label="Net contribution" Value="@Format.Money(_contribution, _base)" />
+        <StatCard Label="Cost basis" Value="@Format.Money(_totalCost, _base)" />
+        <StatCard Label="Cash balance" Value="@Format.Money(0, _base)" />
+    </div>
+
+    <div class="section-title mt-6" style="margin-bottom:12px;">Holdings</div>
+    <HoldingsTable Holdings="_holdings" AccountId="Id" />
+</div>
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private AccountDto? _account;
+    private List<EnrichedHolding> _holdings = [];
+    private List<TransactionDto> _transactions = [];
+    private List<double> _chart = [];
+    private List<string> _labels = [];
+    private string _base = "USD";
+    private string _period = "3m";
+    private double _totalValue, _totalCost, _invested, _contribution, _gain, _gainPct;
+    private List<TagDto> _tags = [];
+
+    private RenderFragment Actions => @<text>
+        <button class="btn-icon" title="Import" @onclick="() => Modal.ShowImport()"><Icon Name="upload" /></button>
+        <button class="btn-icon" title="Export" @onclick="Export"><Icon Name="download" /></button>
+        <button class="btn btn-pri btn-sm" @onclick="ShowAddTx"><Icon Name="plus" /> Transaction</button>
+    </text>;
+
+    protected override void OnInitialized() => Modal.OnImported += OnImported;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        State.CurrentAccountId = Id;
+        await Reload();
+    }
+
+    private void OnImported() => _ = Reload();
+
+    private async Task Reload()
+    {
+        var accountTask = Api.GetAsync<AccountDto>($"/api/accounts/{Id}");
+        var holdingsTask = Api.GetAsync<List<HoldingDto>>($"/api/accounts/{Id}/holdings");
+        var txTask = Api.GetAsync<List<TransactionDto>>($"/api/transactions?account_id={Id}");
+        var ratesTask = Api.GetAsync<List<CurrencyRateDto>>("/api/currencies");
+        var sessionTask = Api.GetAsync<SessionDto>("/api/auth/session");
+        await Task.WhenAll(accountTask, holdingsTask, txTask, ratesTask, sessionTask);
+
+        _account = await accountTask;
+        if (_account is null) return;
+        var holdings = await holdingsTask ?? [];
+        _transactions = await txTask ?? [];
+        var rates = new Dictionary<string, double>();
+        foreach (var r in await ratesTask ?? []) rates[$"{r.FromCurrency}_{r.ToCurrency}"] = r.Rate;
+        _base = (await sessionTask)?.BaseCurrency ?? _account.Currency;
+
+        TopBar.Set(_account.Name, Actions, onBack: () => Nav.NavigateTo("/accounts"));
+
+        var symbols = holdings.Select(h => h.Symbol).ToList();
+        var prices = symbols.Count > 0 ? await Api.PostAsync<Dictionary<string, QuoteDto>>("/api/prices/quotes", new { symbols }) ?? [] : [];
+
+        _totalValue = 0; _totalCost = 0; _invested = 0; _contribution = 0;
+        var enriched = new List<EnrichedHolding>();
+        foreach (var h in holdings)
+        {
+            var p = prices.GetValueOrDefault(h.Symbol);
+            double marketValue = h.Quantity * (p?.Price ?? 0);
+            double costBasis = h.Quantity * (h.AvgCost ?? 0);
+            var priceCurrency = p?.Currency ?? "USD";
+            if (priceCurrency != _base) marketValue *= rates.GetValueOrDefault($"{priceCurrency}_{_base}", 1);
+            if (_account.Currency != _base) costBasis *= rates.GetValueOrDefault($"{_account.Currency}_{_base}", 1);
+            var gain = marketValue - costBasis;
+            enriched.Add(new EnrichedHolding
+            {
+                Symbol = h.Symbol, Quantity = h.Quantity, AvgCost = h.AvgCost, Price = p?.Price ?? 0,
+                Name = p?.Name ?? h.Symbol, ChangePercent = p?.ChangePercent ?? 0, MarketValue = marketValue,
+                CostBasis = costBasis, Gain = gain, GainPct = costBasis > 0 ? gain / costBasis * 100 : 0,
+                Currency = _base, AccountId = Id
+            });
+            _totalValue += marketValue; _totalCost += costBasis;
+        }
+        _holdings = enriched.OrderByDescending(h => h.MarketValue).ToList();
+
+        foreach (var tx in _transactions)
+        {
+            double txValue = tx.Quantity * tx.Price;
+            if (_account.Currency != _base) txValue *= rates.GetValueOrDefault($"{_account.Currency}_{_base}", 1);
+            if (tx.Type == "buy") { _invested += txValue; _contribution += txValue; }
+            if (tx.Type == "sell") { _contribution -= txValue; }
+        }
+
+        _gain = _totalValue - _totalCost;
+        _gainPct = _totalCost > 0 ? _gain / _totalCost * 100 : 0;
+        StateHasChanged();
+        await LoadChart(_period);
+    }
+
+    private async Task LoadChart(string period)
+    {
+        _period = period;
+        var data = await Api.GetAsync<List<PortfolioHistoryPointDto>>($"/api/prices/portfolio/history?account_id={Id}&period={period}") ?? [];
+        _chart = data.Select(p => p.Value).ToList();
+        _labels = BuildLabels(data.Select(p => p.Date).ToList());
+        StateHasChanged();
+    }
+
+    private async Task OnPeriod(string p) => await LoadChart(p);
+
+    private void Export() => JS.InvokeVoidAsync("capitrack.go", $"/api/transactions/export/csv?account_id={Id}");
+
+    private async Task ShowAddTx()
+    {
+        _tags = await Api.GetAsync<List<TagDto>>("/api/tags") ?? [];
+        var model = new TransactionFormModel();
+        Modal.Show("Add Transaction", @<TransactionForm Model="model" Tags="_tags" OnSave="() => SaveTx(model)" />);
+    }
+
+    private async Task SaveTx(TransactionFormModel m)
+    {
+        await Api.PostAsync<TransactionDto>("/api/transactions", new
+        {
+            account_id = Id, symbol = m.Symbol, type = m.Type, date = m.Date, quantity = m.Quantity ?? 0,
+            price = m.Price ?? 0, fee = m.Fee, currency = m.Currency, notes = m.Notes, tag_ids = m.TagIds.ToList()
+        });
+        Modal.Close();
+        Toast.Show("Transaction added", "success");
+        await Reload();
+    }
+
+    private static List<string> BuildLabels(List<string> dates)
+    {
+        var labels = new List<string>();
+        if (dates.Count == 0) return labels;
+        const int n = 6;
+        for (var i = 0; i < n; i++)
+        {
+            var idx = Math.Clamp((int)Math.Round((double)i / (n - 1) * (dates.Count - 1)), 0, dates.Count - 1);
+            var d = dates[idx];
+            labels.Add(DateTime.TryParse(d, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var dt)
+                ? dt.ToString("MMM d", System.Globalization.CultureInfo.InvariantCulture) : d);
+        }
+        return labels;
+    }
+
+    public void Dispose() => Modal.OnImported -= OnImported;
+}

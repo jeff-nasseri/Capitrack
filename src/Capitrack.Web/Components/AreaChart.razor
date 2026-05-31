@@ -1,0 +1,139 @@
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+<div class="chart-wrap" @ref="_el" style="height:@(Height)px;">
+    @if (_w > 0 && _n >= 2)
+    {
+        <svg width="@_w" height="@Height" style="display:block;overflow:visible;"
+             @onmousemove="OnMove" @onmouseleave="OnLeave">
+            @_inner
+            @if (_hover >= 0)
+            {
+                <line x1="@Fmt(_hx)" y1="@PadTop" x2="@Fmt(_hx)" y2="@(Height - PadBot)" class="chart-hover-line"></line>
+            }
+        </svg>
+    }
+    @if (_hover >= 0)
+    {
+        <div class="chart-dot" style="left:@(Fmt(_hx))px;top:@(Fmt(_hy))px;opacity:1;"></div>
+        <div class="chart-tip" style="left:@(Fmt(_tipx))px;top:@(Fmt(_hy))px;opacity:1;">@_tip</div>
+    }
+</div>
+
+@code {
+    [Parameter] public IReadOnlyList<double>? Data { get; set; }
+    [Parameter] public int Height { get; set; } = 230;
+    [Parameter] public string? Currency { get; set; } = "USD";
+    [Parameter] public IReadOnlyList<string>? Labels { get; set; }
+    [Parameter] public string Stroke { get; set; } = "var(--pri-2)";
+
+    private const double Pad = 8, PadTop = 18, PadBot = 26, PadR = 52;
+
+    private ElementReference _el;
+    private DotNetObjectReference<AreaChart>? _ref;
+    private readonly string _gid = "ac" + Guid.NewGuid().ToString("N")[..6];
+
+    private double _w;
+    private int _n;
+    private double _min, _max, _range, _innerW;
+    private MarkupString _inner;
+
+    private int _hover = -1;
+    private double _hx, _hy, _tipx;
+    private string _tip = "";
+
+    protected override void OnParametersSet() => Recompute();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _ref = DotNetObjectReference.Create(this);
+            _w = await JS.InvokeAsync<double>("capitrack.observeSize", _el, _ref);
+            Recompute();
+            StateHasChanged();
+        }
+    }
+
+    [JSInvokable]
+    public void OnResize(double width)
+    {
+        _w = width;
+        Recompute();
+        InvokeAsync(StateHasChanged);
+    }
+
+    private double X(int i) => Pad + (double)i / (_n - 1) * (_innerW - Pad * 2);
+    private double Y(double v) => PadTop + (1 - (v - _min) / _range) * (Height - PadTop - PadBot);
+
+    private void Recompute()
+    {
+        var d = Data;
+        _n = d?.Count ?? 0;
+        if (d is null || _n < 2 || _w <= 0) { _inner = default; return; }
+
+        _min = d.Min();
+        _max = d.Max();
+        _range = _max - _min == 0 ? 1 : _max - _min;
+        _innerW = Math.Max(_w - PadR, 10);
+
+        var pts = new List<(double, double)>(_n);
+        for (var i = 0; i < _n; i++) pts.Add((X(i), Y(d[i])));
+        var line = ChartMath.SmoothPath(pts);
+        var area = $"{line} L {Fmt(X(_n - 1))} {Fmt(Height - PadBot)} L {Fmt(X(0))} {Fmt(Height - PadBot)} Z";
+
+        // SVG inner is built as raw markup so the SVG <text> elements don't collide
+        // with Razor's reserved <text> control tag.
+        var sb = new System.Text.StringBuilder();
+        sb.Append($"<defs><linearGradient id=\"{_gid}\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" class=\"chart-g1\"></stop><stop offset=\"1\" class=\"chart-g2\"></stop></linearGradient></defs>");
+        for (var i = 0; i <= 4; i++)
+        {
+            var v = _max - _range * i / 4;
+            var y = Fmt(Y(v));
+            sb.Append($"<line x1=\"{Fmt(Pad)}\" y1=\"{y}\" x2=\"{Fmt(_innerW - Pad)}\" y2=\"{y}\" class=\"chart-grid\"></line>");
+            sb.Append($"<text x=\"{Fmt(_innerW + 6)}\" y=\"{Fmt(Y(v) + 3)}\" class=\"chart-axis\">{Esc(Format.CompactMoney(v, Currency))}</text>");
+        }
+        sb.Append($"<path d=\"{area}\" fill=\"url(#{_gid})\"></path>");
+        sb.Append($"<path d=\"{line}\" class=\"chart-line\" style=\"stroke:{Stroke}\"></path>");
+        var labels = Labels;
+        if (labels is { Count: > 0 })
+        {
+            for (var i = 0; i < labels.Count; i++)
+            {
+                var idx = (int)Math.Round((double)i / (labels.Count - 1) * (_n - 1));
+                var anchor = i == 0 ? "start" : i == labels.Count - 1 ? "end" : "middle";
+                sb.Append($"<text x=\"{Fmt(X(idx))}\" y=\"{Fmt(Height - 6)}\" class=\"chart-axis\" text-anchor=\"{anchor}\">{Esc(labels[i])}</text>");
+            }
+        }
+        _inner = new MarkupString(sb.ToString());
+    }
+
+    private void OnMove(MouseEventArgs e)
+    {
+        if (_n < 2) return;
+        var mx = e.OffsetX;
+        int best = 0;
+        double bd = double.MaxValue;
+        for (var i = 0; i < _n; i++)
+        {
+            var dx = Math.Abs(X(i) - mx);
+            if (dx < bd) { bd = dx; best = i; }
+        }
+        _hover = best;
+        _hx = X(best);
+        _hy = Y(Data![best]);
+        _tip = Format.Money(Data[best], Currency);
+        _tipx = Math.Min(Math.Max(_hx, 60), _innerW - 30);
+    }
+
+    private void OnLeave() => _hover = -1;
+
+    private static string Fmt(double v) => v.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+    private static string Esc(string s) => s.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;");
+
+    public async ValueTask DisposeAsync()
+    {
+        try { await JS.InvokeVoidAsync("capitrack.unobserveSize", _el); } catch { }
+        _ref?.Dispose();
+    }
+}

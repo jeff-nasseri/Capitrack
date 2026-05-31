@@ -1,0 +1,20 @@
+<form @onsubmit="Save" @onsubmit:preventDefault>
+    <div class="form-row">
+        <div class="field"><label>From Currency</label><input class="input" type="text" @bind="Model.FromCurrency" maxlength="5" placeholder="USD" required /></div>
+        <div class="field"><label>To Currency</label><input class="input" type="text" @bind="Model.ToCurrency" maxlength="5" placeholder="EUR" required /></div>
+    </div>
+    <div class="field"><label>Rate</label><input class="input" type="number" step="any" min="0" @bind="Model.Rate" required /></div>
+    <button type="submit" class="btn btn-pri btn-block"><Icon Name="check" /> Save</button>
+</form>
+
+@code {
+    [Parameter] public RateFormModel Model { get; set; } = new();
+    [Parameter] public EventCallback OnSave { get; set; }
+
+    private async Task Save()
+    {
+        Model.FromCurrency = Model.FromCurrency.ToUpperInvariant();
+        Model.ToCurrency = Model.ToCurrency.ToUpperInvariant();
+        await OnSave.InvokeAsync();
+    }
+}
