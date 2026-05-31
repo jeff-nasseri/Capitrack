@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Client.Infrastructure</RootNamespace>
+    <!-- Fluxor 6.6.0's DI.Abstractions upper-bound (<10) is intentionally overridden to 10.0.0. -->
+    <NoWarn>$(NoWarn);NU1608</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="10.0.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.0" />
+    <PackageReference Include="Fluxor.Blazor.Web" Version="6.6.0" />
+    <!-- Align DI.Abstractions to 10.0.0 over Fluxor.Blazor.Web's <10 pin. -->
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Client.Application\Client.Application.csproj" />
+  </ItemGroup>
+
+</Project>

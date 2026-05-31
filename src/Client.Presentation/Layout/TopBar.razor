@@ -1,0 +1,43 @@
+@implements IDisposable
+@inject TopBarState Bar
+@inject IState<ThemeState> ThemeState
+@inject IDispatcher Dispatcher
+
+<header class="topbar">
+    @if (Bar.OnBack is not null)
+    {
+        <button class="btn-icon" @onclick="() => Bar.OnBack!()" title="Back"><Icon Name="arrowL" /></button>
+    }
+    <h1>
+        @Bar.Title
+        @if (Bar.Sub is not null)
+        {
+            <span style="font-size:0.82rem;font-weight:500;color:var(--text-3);">@Bar.Sub</span>
+        }
+    </h1>
+    <div class="spacer"></div>
+    @Bar.Actions
+    <button class="btn-icon" @onclick="ToggleTheme" title="Toggle theme">
+        <Icon Name="@(ThemeState.Value.Theme == "dark" ? "sun" : "moon")" />
+    </button>
+</header>
+
+@code {
+    protected override void OnInitialized()
+    {
+        Bar.OnChange += Refresh;
+        ThemeState.StateChanged += OnStateChanged;
+    }
+
+    private void Refresh() => InvokeAsync(StateHasChanged);
+
+    private void OnStateChanged(object? sender, EventArgs e) => InvokeAsync(StateHasChanged);
+
+    private void ToggleTheme() => Dispatcher.Dispatch(new ToggleThemeAction());
+
+    public void Dispose()
+    {
+        Bar.OnChange -= Refresh;
+        ThemeState.StateChanged -= OnStateChanged;
+    }
+}

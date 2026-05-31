@@ -2,11 +2,18 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
-COPY src/Capitrack.Web/Capitrack.Web.csproj src/Capitrack.Web/
-RUN dotnet restore src/Capitrack.Web/Capitrack.Web.csproj
+# Restore against the full client project graph (Domain -> Application -> Infrastructure -> Presentation).
+COPY src/Client.Domain/Client.Domain.csproj src/Client.Domain/
+COPY src/Client.Application/Client.Application.csproj src/Client.Application/
+COPY src/Client.Infrastructure/Client.Infrastructure.csproj src/Client.Infrastructure/
+COPY src/Client.Presentation/Client.Presentation.csproj src/Client.Presentation/
+RUN dotnet restore src/Client.Presentation/Client.Presentation.csproj
 
-COPY src/Capitrack.Web/ src/Capitrack.Web/
-RUN dotnet publish src/Capitrack.Web/Capitrack.Web.csproj -c Release -o /app/publish
+COPY src/Client.Domain/ src/Client.Domain/
+COPY src/Client.Application/ src/Client.Application/
+COPY src/Client.Infrastructure/ src/Client.Infrastructure/
+COPY src/Client.Presentation/ src/Client.Presentation/
+RUN dotnet publish src/Client.Presentation/Client.Presentation.csproj -c Release -o /app/publish
 
 # ---- Runtime stage (nginx serves the WASM app + proxies /api) ----
 FROM nginx:alpine

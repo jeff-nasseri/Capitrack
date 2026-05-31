@@ -1,0 +1,42 @@
+name: Frontend Tests
+
+on:
+  push:
+    branches: [master, main, develop]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  client-unit-tests:
+    name: Client.Tests (bUnit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Run bUnit component tests
+        run: dotnet test tests/Client.Tests/Client.Tests.csproj -c Release --logger "console;verbosity=normal"
+
+  acceptance-tests:
+    name: AcceptanceTests (Reqnroll + Testcontainers + Playwright)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build acceptance tests
+        run: dotnet build tests/AcceptanceTests/AcceptanceTests.csproj -c Release
+
+      - name: Install Playwright browsers
+        run: pwsh tests/AcceptanceTests/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
+
+      - name: Run acceptance tests (BDD E2E)
+        run: dotnet test tests/AcceptanceTests/AcceptanceTests.csproj -c Release --no-build --logger "console;verbosity=normal"

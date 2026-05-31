@@ -1,0 +1,57 @@
+@implements IDisposable
+@inject IState<SessionState> Session
+@inject IDispatcher Dispatcher
+@inject IApiClient Api
+@inject SettingsStore Settings
+
+<Fluxor.Blazor.Web.StoreInitializer />
+
+@if (!Session.Value.Initialized)
+{
+    <div class="login-container"><div class="loading-spinner">Loading Capitrack...</div></div>
+}
+else if (Session.Value.User is null)
+{
+    <Login />
+}
+else
+{
+    <Router AppAssembly="@typeof(App).Assembly">
+        <Found Context="routeData">
+            <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)" />
+        </Found>
+        <NotFound>
+            <LayoutView Layout="@typeof(MainLayout)">
+                <p>Page not found.</p>
+            </LayoutView>
+        </NotFound>
+    </Router>
+}
+
+@code {
+    protected override void OnInitialized()
+    {
+        Api.Unauthorized += OnUnauthorized;
+        Session.StateChanged += OnStateChange;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        // Mirrors the original App.razor bootstrap: load persisted prefs/theme, then
+        // probe the session (the loading spinner shows until SetUserAction resolves).
+        await Settings.InitAsync();
+        Dispatcher.Dispatch(new InitThemeAction());
+        Dispatcher.Dispatch(new InitializeSessionAction());
+    }
+
+    private void OnStateChange(object? sender, EventArgs e) => InvokeAsync(StateHasChanged);
+
+    private void OnUnauthorized() => InvokeAsync(() => Dispatcher.Dispatch(new SetUserAction(null)));
+
+    public void Dispose()
+    {
+        Api.Unauthorized -= OnUnauthorized;
+        Session.StateChanged -= OnStateChange;
+    }
+}
