@@ -9,7 +9,7 @@ obj/
 *.db
 *.sqlite
 *.sqlite3
-data/
+/data/
 
 # Environment variables
 .env
@@ -43,8 +43,10 @@ tmp/
 temp/
 *.tmp
 
-# Transactions import folder (mounted into the api container)
-transactions/
+# Transactions import folder (mounted into the api container).
+# Anchored to the repo root so it does NOT match source folders named
+# "Transactions/" (the Windows filesystem is case-insensitive).
+/transactions/
 
 # Design source files (mockups & exports — not part of the application)
 Design Files/
