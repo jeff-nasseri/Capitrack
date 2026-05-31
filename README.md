@@ -1,194 +1,59 @@
 <p align="center">
-  <img src="src/static/images/banner-logo.png" alt="Capitrack Banner" width="600">
-</p>
-
-<p align="center">
-  <a href="https://github.com/jeff-nasseri/Capitrack/actions/workflows/ci.yml">
-    <img src="https://github.com/jeff-nasseri/Capitrack/actions/workflows/ci.yml/badge.svg" alt="CI Status">
-  </a>
-  <a href="https://github.com/jeff-nasseri/Capitrack/blob/master/LICENSE">
-    <img src="https://img.shields.io/github/license/jeff-nasseri/Capitrack" alt="License">
-  </a>
-  <a href="https://www.npmjs.com/package/capitrack">
-    <img src="https://img.shields.io/npm/v/capitrack" alt="npm version">
-  </a>
+  <img src="assets/banner.svg" alt="Capitrack — self-hosted wealth tracking for stocks, crypto and commodities" width="880">
 </p>
 
 # Capitrack
 
-**Personal wealth tracking and investment portfolio management platform**
+**Personal wealth tracking and investment portfolio management platform.**
 
-Capitrack is an open-source, self-hosted application for tracking your investments across multiple accounts including stocks, cryptocurrencies, and commodities. Get real-time price data, visualize your portfolio performance, and set financial goals.
+Capitrack is an open-source, self-hosted app for tracking investments across multiple
+accounts — stocks, crypto, and commodities — with real-time prices from Yahoo Finance,
+portfolio analytics, CSV import, financial goals, and a wealth calendar.
+
+Built with a **.NET 10 (ASP.NET Core) API** and a **Blazor WebAssembly** frontend.
+
+## Quick start
+
+```bash
+git clone https://github.com/jeff-nasseri/Capitrack.git
+cd Capitrack
+docker compose up -d
+```
+
+Open **http://localhost:3000** and sign in as **`admin`**. The database starts **empty**,
+and on first run a **random admin password is generated and printed to the logs**:
+
+```bash
+docker compose logs api
+```
+
+To choose your own password instead, copy `.env.example` to `.env` and set
+`CAPITRACK_INIT_PASSWORD` before the first run. Change it any time from **Settings → Security**.
 
 ## Features
 
-- **Multi-Account Portfolio Tracking** - Track investments across stocks, crypto, and commodities
-- **Real-Time Price Data** - Automatic price fetching from Yahoo Finance
-- **CSV Import** - Import transactions from Revolut, Trezor, or generic CSV files
-- **Portfolio Analytics** - Charts, performance metrics, and historical tracking
-- **Financial Goals** - Set and track goals by year, quarter, month, or week
-- **Currency Conversion** - Support for multiple currencies with conversion rates
-- **Dark/Light Themes** - Beautiful UI that works in any lighting
-- **Self-Hosted** - Your data stays on your server
+- Multi-account portfolio tracking (stocks, crypto, commodities)
+- Real-time prices from Yahoo Finance
+- CSV import (Revolut, Trezor, or generic) with auto-detection and de-duplication
+- Dashboard, holdings, and per-account / per-symbol analytics with interactive charts
+- Financial goals and a wealth calendar
+- Multi-currency support with conversion rates
+- Dark / light themes — self-hosted, your data stays on your server
 
-<p align="center">
-  <img src="src/static/images/dashboard-demo1.png" alt="Dashboard" width="45%" />
-  <img src="src/static/images/dashboard-demo2.png" alt="Portfolio Analytics" width="45%" />
-</p>
+## Documentation
 
-<p align="center">
-  <img src="src/static/images/dashboard-demo3.png" alt="Financial Goals" width="45%" />
-  <img src="src/static/images/dashboard-demo4.png" alt="Accounts Overview" width="45%" />
-</p>
+Full documentation lives in [`docs/`](docs/):
 
-
-## Quick Start
-
-### Using npm
-
-```bash
-# Install globally
-npm install -g capitrack
-
-# Run
-capitrack
-```
-
-### Using Docker
-
-```bash
-# Using Docker Compose
-docker-compose up -d
-
-# Or using Docker directly
-docker run -d -p 3000:3000 -v capitrack-data:/app/data capitrack
-```
-
-### From Source
-
-```bash
-# Clone the repository
-git clone https://github.com/jeff-nasseri/Capitrack.git
-cd Capitrack
-
-# Install dependencies
-npm install
-
-# Build TypeScript
-npm run build
-
-# Start the server
-npm start
-```
-
-Visit `http://localhost:3000` and login with the default credentials:
-- **Username:** admin
-- **Password:** admin
-
-> **Important:** Change the default password immediately after first login!
-
-You can customize the initial credentials by setting environment variables before first run:
-```bash
-export CAPITRACK_INIT_USERNAME=myuser
-export CAPITRACK_INIT_PASSWORD=mysecurepassword
-```
-
-See `.env.template` for all available configuration options.
-
-## Configuration
-
-### Environment Variables
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `PORT` | Server port | `3000` |
-| `DB_PATH` | Path to SQLite database | `./data/capitrack.db` |
-| `SESSION_SECRET` | Session encryption key | Random on each start |
-
-### Docker Compose
-
-```yaml
-version: '3.8'
-services:
-  capitrack:
-    image: capitrack
-    ports:
-      - "3000:3000"
-    volumes:
-      - capitrack-data:/app/data
-    environment:
-      - SESSION_SECRET=your-secret-key
-    restart: unless-stopped
-
-volumes:
-  capitrack-data:
-```
-
-## Screenshots
-
-### Dashboard
-Track your total wealth, see performance charts, and monitor all accounts at a glance.
-
-### Portfolio Analytics
-Visualize your portfolio performance over time with interactive charts.
-
-### Financial Goals
-Set and track financial goals with hierarchical organization by year, quarter, month, and week.
-
-## Development
-
-### Prerequisites
-
-- **Node.js 18.x** or higher
-- **npm 9.x** or higher
-- **Build tools** for native modules:
-  - **Windows:** Visual Studio Build Tools with "Desktop development with C++" workload
-  - **macOS:** Xcode Command Line Tools (`xcode-select --install`)
-  - **Linux:** `build-essential` package
-
-### Setup
-
-```bash
-# Install dependencies
-npm install
-
-# Run in development mode with hot reload
-npm run dev
-
-# Run tests
-npm test
-
-# Build for production
-npm run build
-```
-
-> **Note:** The `better-sqlite3` package requires compilation of native bindings. If you encounter build errors, ensure you have the required build tools installed for your platform.
-
-## API Documentation
-
-Capitrack provides a RESTful API for all operations:
-
-- `POST /api/auth/login` - Authenticate
-- `GET /api/accounts` - List all accounts
-- `GET /api/transactions` - List transactions
-- `GET /api/prices/quote/:symbol` - Get price for symbol
-- `GET /api/prices/dashboard/summary` - Get portfolio summary
-
-See the [API documentation](docs/api.md) for full details.
-
-## Contributing
-
-We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-## Security
-
-For security concerns, please see [SECURITY.md](SECURITY.md).
+| Doc | What it covers |
+|-----|----------------|
+| [Architecture](docs/architecture.md) | Technical design, components, data flow |
+| [API Reference](docs/api.md) | Every REST endpoint |
+| [Usage Guide](docs/usage.md) | Using the platform, page by page |
+| [CSV Import](docs/csv-import.md) | Supported formats and field mapping |
+| [Development](docs/development.md) | Build, test, and run locally |
+| [Deployment](docs/deployment.md) | Docker, configuration, environment variables |
+| [Migration Notes](docs/migration.md) | The Node → .NET / Blazor migration |
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Support
-
-- **Issues:** [GitHub Issues](https://github.com/jeff-nasseri/Capitrack/issues)
-- **Discussions:** [GitHub Discussions](https://github.com/jeff-nasseri/Capitrack/discussions)
+[MIT](LICENSE) · Contributions welcome — see [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md).
