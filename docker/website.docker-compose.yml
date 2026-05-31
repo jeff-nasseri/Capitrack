@@ -1,0 +1,19 @@
+# Capitrack public website (landing page + documentation) for capitrack.dev.
+# Self-contained: just the static site served by nginx.
+#
+# Usage (from the repo root):
+#   docker compose -f docker/website.docker-compose.yml up -d --build
+#   # then open http://localhost:8080
+#
+# This is independent of the main application stack (docker-compose.yml).
+services:
+  website:
+    build:
+      # Build context is the website project; its Dockerfile lives at the root of it.
+      context: ../src/Capitrack.WebSite
+      dockerfile: Dockerfile
+    image: capitrack-website
+    container_name: capitrack-website
+    restart: unless-stopped
+    ports:
+      - "8080:80"
