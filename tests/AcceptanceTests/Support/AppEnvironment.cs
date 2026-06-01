@@ -54,7 +54,7 @@ public sealed class AppEnvironment : IAsyncDisposable
             .WithImage(webImage)
             .WithNetwork(env._network)
             .WithNetworkAliases("web")
-            .WithExposedPort(80)
+            .WithPortBinding(80, true)
             .WithWaitStrategy(Wait.ForUnixContainer().UntilPortIsAvailable(80))
             .Build();
         await env._web.StartAsync(cts.Token);
