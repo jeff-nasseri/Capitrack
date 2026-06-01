@@ -2,6 +2,15 @@
   <img src="assets/banner.svg" alt="Capitrack — self-hosted wealth tracking for stocks, crypto and commodities" width="880">
 </p>
 
+<p align="center">
+  <a href="https://github.com/jeff-nasseri/Capitrack/actions/workflows/build.yml"><img src="https://github.com/jeff-nasseri/Capitrack/actions/workflows/build.yml/badge.svg" alt="Build"></a>
+  <a href="https://github.com/jeff-nasseri/Capitrack/actions/workflows/backend-tests.yml"><img src="https://github.com/jeff-nasseri/Capitrack/actions/workflows/backend-tests.yml/badge.svg" alt="Backend Tests"></a>
+  <a href="https://github.com/jeff-nasseri/Capitrack/actions/workflows/frontend-tests.yml"><img src="https://github.com/jeff-nasseri/Capitrack/actions/workflows/frontend-tests.yml/badge.svg" alt="Frontend Tests"></a>
+  <a href="https://github.com/jeff-nasseri/Capitrack/actions/workflows/codeql.yml"><img src="https://github.com/jeff-nasseri/Capitrack/actions/workflows/codeql.yml/badge.svg" alt="CodeQL"></a>
+  <a href="https://capitrack.dev"><img src="https://img.shields.io/badge/website-capitrack.dev-6366f1?logo=googlechrome&logoColor=white" alt="Website"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green" alt="MIT License"></a>
+</p>
+
 # Capitrack
 
 **Personal wealth tracking and investment portfolio management platform.**

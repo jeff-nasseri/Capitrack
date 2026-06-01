@@ -4,18 +4,18 @@ WORKDIR /src
 
 # Restore (cached when csproj files are unchanged)
 COPY Directory.Build.props ./
-COPY src/Server.Domain/Server.Domain.csproj src/Server.Domain/
-COPY src/Server.Application/Server.Application.csproj src/Server.Application/
-COPY src/Server.Infrastructure/Server.Infrastructure.csproj src/Server.Infrastructure/
-COPY src/Server.Api/Server.Api.csproj src/Server.Api/
-RUN dotnet restore src/Server.Api/Server.Api.csproj
+COPY src/server/Server.Domain/Server.Domain.csproj src/server/Server.Domain/
+COPY src/server/Server.Application/Server.Application.csproj src/server/Server.Application/
+COPY src/server/Server.Infrastructure/Server.Infrastructure.csproj src/server/Server.Infrastructure/
+COPY src/server/Server.Api/Server.Api.csproj src/server/Server.Api/
+RUN dotnet restore src/server/Server.Api/Server.Api.csproj
 
 # Build + publish
-COPY src/Server.Domain/ src/Server.Domain/
-COPY src/Server.Application/ src/Server.Application/
-COPY src/Server.Infrastructure/ src/Server.Infrastructure/
-COPY src/Server.Api/ src/Server.Api/
-RUN dotnet publish src/Server.Api/Server.Api.csproj -c Release -o /app/publish /p:UseAppHost=false
+COPY src/server/Server.Domain/ src/server/Server.Domain/
+COPY src/server/Server.Application/ src/server/Server.Application/
+COPY src/server/Server.Infrastructure/ src/server/Server.Infrastructure/
+COPY src/server/Server.Api/ src/server/Server.Api/
+RUN dotnet publish src/server/Server.Api/Server.Api.csproj -c Release -o /app/publish /p:UseAppHost=false
 
 # ---- Runtime stage ----
 FROM mcr.microsoft.com/dotnet/aspnet:10.0

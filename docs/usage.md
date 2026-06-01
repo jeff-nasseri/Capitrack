@@ -10,7 +10,6 @@ can be expanded to show labels or collapsed to icons only; the choice is remembe
 
 ## Login
 
-![Login](../screenshots/01-login.png)
 
 Sign in with your username and password. On a fresh install the database is **empty** and
 the default username is **`admin`**. The password is taken from `CAPITRACK_INIT_PASSWORD`;
@@ -26,7 +25,6 @@ stay logged in across visits and container restarts.
 
 ## Dashboard
 
-![Dashboard](../screenshots/02-dashboard.png)
 
 The dashboard is the landing page (`/`). It shows:
 
@@ -45,7 +43,6 @@ The dashboard also saves a background daily-wealth snapshot each time it loads.
 
 ## Holdings
 
-![Holdings](../screenshots/03-holdings.png)
 
 The Holdings page (`/holdings`) aggregates positions across **all** accounts into one table:
 symbol, quantity, average cost, market value, gain, and gain percent, sorted by market value.
@@ -53,7 +50,6 @@ Live prices are fetched in a single batch quote call.
 
 ## Accounts
 
-![Accounts](../screenshots/04-accounts.png)
 
 The Accounts page (`/accounts`) shows every account as a card with its icon, name, type
 badge, market value, holding count, and currency. Click a card to open the account.
@@ -64,7 +60,6 @@ badge, market value, holding count, and currency. Click a card to open the accou
 
 ## Account detail
 
-![Account detail](../screenshots/09-account-detail.png)
 
 Opening an account (`/accounts/{id}`) shows:
 
@@ -82,7 +77,6 @@ skipped automatically. See [csv-import.md](csv-import.md).
 
 ## Symbol detail
 
-![Symbol detail](../screenshots/10-symbol-detail.png)
 
 Clicking a holding opens the symbol page (`/accounts/{id}/{symbol}`). The header shows the
 name, ticker, an **Add Transaction** button, and three tabs.
@@ -105,7 +99,6 @@ Tabs:
 
 ## Activity
 
-![Activity](../screenshots/05-activity.png)
 
 The Activity page (`/activity`) is a chronological table of all transactions across accounts:
 date, account, symbol, type, quantity, price, and total. A per-row menu offers **View
@@ -115,7 +108,6 @@ Details**, **Edit**, and **Delete**.
 
 ## Calendar
 
-![Calendar](../screenshots/06-calendar.png)
 
 The Calendar page (`/calendar`) plots transactions and daily wealth over time, with three
 views you can switch between, plus previous/next navigation and a **Today** button:
@@ -133,7 +125,6 @@ today in the background.
 
 ## Goals
 
-![Goals](../screenshots/07-goals.png)
 
 The Goals page (`/goals`) lists your financial goals as progress cards. Each card shows the
 title, current wealth vs. target amount, a progress bar and percentage, the target date, and
@@ -144,7 +135,6 @@ Goals can also be managed (including **Remove All**) from **Settings → Goals**
 
 ## Settings
 
-![Settings](../screenshots/08-settings.png)
 
 Settings (`/settings`) has a left menu with nine panels:
 

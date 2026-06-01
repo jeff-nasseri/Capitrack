@@ -50,3 +50,6 @@ temp/
 
 # Design source files (mockups & exports — not part of the application)
 Design Files/
+
+# Generated screenshots (not tracked)
+/screenshots/
