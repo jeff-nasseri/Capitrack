@@ -1,22 +1,23 @@
 using DotNet.Testcontainers.Builders;
 using DotNet.Testcontainers.Containers;
-using DotNet.Testcontainers.Images;
 using DotNet.Testcontainers.Networks;
 using Microsoft.Playwright;
 
 namespace AcceptanceTests.Support;
 
 /// <summary>
-/// Boots the whole Capitrack stack for end-to-end tests: builds the api + web
-/// Docker images from the repo's Dockerfiles, runs them on a shared network
-/// (nginx proxies /api to the api container), and launches a headless browser
-/// pointed at the running web app.
+/// Boots the whole Capitrack stack for end-to-end tests: runs the api + web
+/// images on a shared network (nginx proxies /api to the api container) and
+/// launches a headless browser pointed at the running web app.
+///
+/// In CI the images are pre-built with BuildKit and passed in via the
+/// CAPITRACK_API_IMAGE / CAPITRACK_WEB_IMAGE environment variables (fast and
+/// memory-friendly). Locally, with those unset, the images are built from the
+/// repo's Dockerfiles on demand.
 /// </summary>
 public sealed class AppEnvironment : IAsyncDisposable
 {
     private INetwork _network = default!;
-    private IFutureDockerImage _apiImage = default!;
-    private IFutureDockerImage _webImage = default!;
     private IContainer _api = default!;
     private IContainer _web = default!;
 
@@ -27,29 +28,14 @@ public sealed class AppEnvironment : IAsyncDisposable
     public static async Task<AppEnvironment> StartAsync()
     {
         var env = new AppEnvironment();
-        var solution = CommonDirectoryPath.GetSolutionDirectory();
 
-        env._apiImage = new ImageFromDockerfileBuilder()
-            .WithDockerfileDirectory(solution, string.Empty)
-            .WithDockerfile("docker/api.Dockerfile")
-            .WithName("capitrack-acc-api:latest")
-            .WithCleanUp(false)
-            .Build();
-
-        env._webImage = new ImageFromDockerfileBuilder()
-            .WithDockerfileDirectory(solution, string.Empty)
-            .WithDockerfile("docker/web.Dockerfile")
-            .WithName("capitrack-acc-web:latest")
-            .WithCleanUp(false)
-            .Build();
-
-        await env._apiImage.CreateAsync();
-        await env._webImage.CreateAsync();
+        var apiImage = await ResolveImageAsync("CAPITRACK_API_IMAGE", "capitrack-acc-api:latest", "docker/api.Dockerfile");
+        var webImage = await ResolveImageAsync("CAPITRACK_WEB_IMAGE", "capitrack-acc-web:latest", "docker/web.Dockerfile");
 
         env._network = new NetworkBuilder().Build();
 
         env._api = new ContainerBuilder()
-            .WithImage(env._apiImage)
+            .WithImage(apiImage)
             .WithNetwork(env._network)
             .WithNetworkAliases("api")
             .WithEnvironment("CAPITRACK_INIT_USERNAME", "admin")
@@ -62,7 +48,7 @@ public sealed class AppEnvironment : IAsyncDisposable
         await env._api.StartAsync();
 
         env._web = new ContainerBuilder()
-            .WithImage(env._webImage)
+            .WithImage(webImage)
             .WithNetwork(env._network)
             .WithNetworkAliases("web")
             .WithExposedPort(80)
@@ -76,6 +62,21 @@ public sealed class AppEnvironment : IAsyncDisposable
         env.Browser = await env.Playwright.Chromium.LaunchAsync(new BrowserTypeLaunchOptions { Headless = true });
 
         return env;
+    }
+
+    private static async Task<string> ResolveImageAsync(string envVar, string localTag, string dockerfile)
+    {
+        var prebuilt = Environment.GetEnvironmentVariable(envVar);
+        if (!string.IsNullOrWhiteSpace(prebuilt)) return prebuilt;
+
+        var image = new ImageFromDockerfileBuilder()
+            .WithDockerfileDirectory(CommonDirectoryPath.GetSolutionDirectory(), string.Empty)
+            .WithDockerfile(dockerfile)
+            .WithName(localTag)
+            .WithCleanUp(false)
+            .Build();
+        await image.CreateAsync();
+        return localTag;
     }
 
     public async ValueTask DisposeAsync()

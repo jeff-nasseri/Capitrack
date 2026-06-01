@@ -38,5 +38,18 @@ jobs:
       - name: Install Playwright browsers
         run: pwsh tests/AcceptanceTests/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
 
+      # Build the app images once, with BuildKit, in a dedicated step. The classic
+      # builder Testcontainers uses is far slower/heavier for the Blazor WASM image
+      # and starves the runner when run alongside the test host.
+      - name: Build app images for E2E
+        env:
+          DOCKER_BUILDKIT: '1'
+        run: |
+          docker build -f docker/api.Dockerfile -t capitrack-acc-api:latest .
+          docker build -f docker/web.Dockerfile -t capitrack-acc-web:latest .
+
       - name: Run acceptance tests (BDD E2E)
+        env:
+          CAPITRACK_API_IMAGE: capitrack-acc-api:latest
+          CAPITRACK_WEB_IMAGE: capitrack-acc-web:latest
         run: dotnet test tests/AcceptanceTests/AcceptanceTests.csproj -c Release --no-build --logger "console;verbosity=normal"
