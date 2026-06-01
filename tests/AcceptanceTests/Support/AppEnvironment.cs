@@ -34,6 +34,9 @@ public sealed class AppEnvironment : IAsyncDisposable
 
         env._network = new NetworkBuilder().Build();
 
+        // Bound startup so a wait that never resolves fails fast instead of hanging the job.
+        using var cts = new CancellationTokenSource(TimeSpan.FromMinutes(4));
+
         env._api = new ContainerBuilder()
             .WithImage(apiImage)
             .WithNetwork(env._network)
@@ -43,18 +46,18 @@ public sealed class AppEnvironment : IAsyncDisposable
             .WithEnvironment("CAPITRACK_BASE_CURRENCY", "EUR")
             .WithEnvironment("DB_PATH", "/app/data/capitrack.db")
             .WithExposedPort(8080)
-            .WithWaitStrategy(Wait.ForUnixContainer().UntilHttpRequestIsSucceeded(r => r.ForPath("/health").ForPort(8080)))
+            .WithWaitStrategy(Wait.ForUnixContainer().UntilPortIsAvailable(8080))
             .Build();
-        await env._api.StartAsync();
+        await env._api.StartAsync(cts.Token);
 
         env._web = new ContainerBuilder()
             .WithImage(webImage)
             .WithNetwork(env._network)
             .WithNetworkAliases("web")
             .WithExposedPort(80)
-            .WithWaitStrategy(Wait.ForUnixContainer().UntilHttpRequestIsSucceeded(r => r.ForPath("/").ForPort(80)))
+            .WithWaitStrategy(Wait.ForUnixContainer().UntilPortIsAvailable(80))
             .Build();
-        await env._web.StartAsync();
+        await env._web.StartAsync(cts.Token);
 
         env.BaseUrl = $"http://{env._web.Hostname}:{env._web.GetMappedPublicPort(80)}";
 
