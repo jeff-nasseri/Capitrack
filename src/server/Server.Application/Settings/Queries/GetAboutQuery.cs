@@ -1,14 +1,20 @@
 using Server.Application.Common;
-using Server.Application.Settings;
 
 namespace Server.Application.Settings.Queries;
 
+/// <summary>Returns about information for the application.</summary>
 public record GetAboutQuery : IRequest<AboutDto>;
 
-public sealed class GetAboutQueryHandler : IRequestHandler<GetAboutQuery, AboutDto>
+/// <summary>Handles <see cref="GetAboutQuery"/>.</summary>
+public sealed class GetAboutQueryHandler(ILogger<GetAboutQueryHandler> logger)
+    : IRequestHandler<GetAboutQuery, AboutDto>
 {
+    /// <summary>Returns the static about metadata.</summary>
     public Task<AboutDto> Handle(GetAboutQuery request, CancellationToken cancellationToken)
-        => Task.FromResult(new AboutDto(
+    {
+        logger.LogInformation("Handling {Request}", nameof(GetAboutQuery));
+
+        return Task.FromResult(new AboutDto(
             AppInfo.Name,
             AppInfo.Description,
             AppInfo.Version,
@@ -16,4 +22,5 @@ public sealed class GetAboutQueryHandler : IRequestHandler<GetAboutQuery, AboutD
             AppInfo.Repository,
             AppInfo.Author,
             OpenSource: true));
+    }
 }

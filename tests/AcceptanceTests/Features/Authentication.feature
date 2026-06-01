@@ -1,14 +1,24 @@
 Feature: Authentication
-    As a self-hosted user
-    I want to sign in to Capitrack
-    So that only I can see my portfolio
+    In order to keep a self-hosted portfolio private
+    As the account holder
+    Only the holder of valid credentials may reach the dashboard
 
-    Scenario: Signing in with valid credentials
-        Given the Capitrack app is open
-        When I sign in as "admin" with password "admin123"
-        Then I should see the dashboard
+    Rule: Valid credentials grant access to the portfolio
 
-    Scenario: Signing in with invalid credentials
-        Given the Capitrack app is open
-        When I sign in as "admin" with password "wrong-password"
-        Then I should remain on the sign-in screen
+        Scenario: A registered user signs in with valid credentials
+            Given the Capitrack application is open
+            When credentials "admin" / "admin123" are submitted
+            Then the portfolio dashboard is shown
+
+    Rule: Invalid credentials are rejected at the sign-in screen
+
+        Scenario Outline: Sign-in is refused for <case>
+            Given the Capitrack application is open
+            When credentials "<username>" / "<password>" are submitted
+            Then access is denied and the sign-in screen remains
+
+            Examples:
+                | case               | username | password      |
+                | a wrong password   | admin    | wrong-password |
+                | an unknown user    | intruder | admin123       |
+                | empty credentials  |          |               |

@@ -33,6 +33,11 @@ public sealed class Hooks
         _page = await _context.NewPageAsync();
         _container.RegisterInstanceAs(_page);
         _container.RegisterInstanceAs(_app);
+
+        // Build the driver from this scenario's page + the running app's URL and
+        // register it so the (thin) step-definition classes receive it by
+        // constructor injection. All Playwright work happens inside the driver.
+        _container.RegisterInstanceAs(new CapitrackDriver(_page, _app.BaseUrl));
     }
 
     [AfterScenario]

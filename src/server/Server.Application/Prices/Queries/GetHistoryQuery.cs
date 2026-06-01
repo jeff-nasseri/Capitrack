@@ -1,12 +1,21 @@
 namespace Server.Application.Prices.Queries;
 
+/// <summary>Returns the price history for a symbol over a period.</summary>
+/// <param name="Symbol">The symbol whose history to fetch.</param>
+/// <param name="Period">The period key (e.g. 1w, 1m, 1y, max); defaults to 1y.</param>
 public record GetHistoryQuery(string Symbol, string? Period) : IRequest<List<HistoryPointDto>>;
 
-public sealed class GetHistoryQueryHandler(IYahooFinanceClient yahoo)
+/// <summary>Handles <see cref="GetHistoryQuery"/>.</summary>
+public sealed class GetHistoryQueryHandler(
+    IYahooFinanceClient yahoo,
+    ILogger<GetHistoryQueryHandler> logger)
     : IRequestHandler<GetHistoryQuery, List<HistoryPointDto>>
 {
+    /// <summary>Maps the period key to a range/interval and fetches the history series.</summary>
     public async Task<List<HistoryPointDto>> Handle(GetHistoryQuery request, CancellationToken cancellationToken)
     {
+        logger.LogInformation("Handling {Request}", nameof(GetHistoryQuery));
+
         var symbol = request.Symbol.ToUpperInvariant();
         var period = string.IsNullOrEmpty(request.Period) ? "1y" : request.Period;
 

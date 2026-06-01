@@ -26,8 +26,8 @@ namespace AcceptanceTests.Features
         
         private static string[] featureTags = ((string[])(null));
         
-        private static global::Reqnroll.FeatureInfo featureInfo = new global::Reqnroll.FeatureInfo(new System.Globalization.CultureInfo("en"), "Features", "Authentication", ("    As a self-hosted user\n    I want to sign in to Capitrack\n    So that only I c" +
-                "an see my portfolio"), global::Reqnroll.ProgrammingLanguage.CSharp, featureTags);
+        private static global::Reqnroll.FeatureInfo featureInfo = new global::Reqnroll.FeatureInfo(new System.Globalization.CultureInfo("en"), "Features", "Authentication", ("    In order to keep a self-hosted portfolio private\n    As the account holder\n  " +
+                "  Only the holder of valid credentials may reach the dashboard"), global::Reqnroll.ProgrammingLanguage.CSharp, featureTags);
         
         private Xunit.Abstractions.ITestOutputHelper _testOutputHelper;
         
@@ -93,16 +93,16 @@ namespace AcceptanceTests.Features
             await this.TestTearDownAsync();
         }
         
-        [Xunit.SkippableFactAttribute(DisplayName="Signing in with valid credentials")]
+        [Xunit.SkippableFactAttribute(DisplayName="A registered user signs in with valid credentials")]
         [Xunit.TraitAttribute("FeatureTitle", "Authentication")]
-        [Xunit.TraitAttribute("Description", "Signing in with valid credentials")]
-        public async System.Threading.Tasks.Task SigningInWithValidCredentials()
+        [Xunit.TraitAttribute("Description", "A registered user signs in with valid credentials")]
+        public async System.Threading.Tasks.Task ARegisteredUserSignsInWithValidCredentials()
         {
             string[] tagsOfScenario = ((string[])(null));
             System.Collections.Specialized.OrderedDictionary argumentsOfScenario = new System.Collections.Specialized.OrderedDictionary();
-            global::Reqnroll.ScenarioInfo scenarioInfo = new global::Reqnroll.ScenarioInfo("Signing in with valid credentials", null, tagsOfScenario, argumentsOfScenario, featureTags);
-#line 6
-    this.ScenarioInitialize(scenarioInfo);
+            global::Reqnroll.ScenarioInfo scenarioInfo = new global::Reqnroll.ScenarioInfo("A registered user signs in with valid credentials", null, tagsOfScenario, argumentsOfScenario, featureTags);
+#line 8
+        this.ScenarioInitialize(scenarioInfo);
 #line hidden
             if ((global::Reqnroll.TagHelper.ContainsIgnoreTag(scenarioInfo.CombinedTags) || global::Reqnroll.TagHelper.ContainsIgnoreTag(featureTags)))
             {
@@ -111,29 +111,35 @@ namespace AcceptanceTests.Features
             else
             {
                 await this.ScenarioStartAsync();
-#line 7
-        await testRunner.GivenAsync("the Capitrack app is open", ((string)(null)), ((global::Reqnroll.Table)(null)), "Given ");
-#line hidden
-#line 8
-        await testRunner.WhenAsync("I sign in as \"admin\" with password \"admin123\"", ((string)(null)), ((global::Reqnroll.Table)(null)), "When ");
-#line hidden
 #line 9
-        await testRunner.ThenAsync("I should see the dashboard", ((string)(null)), ((global::Reqnroll.Table)(null)), "Then ");
+            await testRunner.GivenAsync("the Capitrack application is open", ((string)(null)), ((global::Reqnroll.Table)(null)), "Given ");
+#line hidden
+#line 10
+            await testRunner.WhenAsync("credentials \"admin\" / \"admin123\" are submitted", ((string)(null)), ((global::Reqnroll.Table)(null)), "When ");
+#line hidden
+#line 11
+            await testRunner.ThenAsync("the portfolio dashboard is shown", ((string)(null)), ((global::Reqnroll.Table)(null)), "Then ");
 #line hidden
             }
             await this.ScenarioCleanupAsync();
         }
         
-        [Xunit.SkippableFactAttribute(DisplayName="Signing in with invalid credentials")]
+        [Xunit.SkippableTheoryAttribute(DisplayName="Sign-in is refused for <case>")]
         [Xunit.TraitAttribute("FeatureTitle", "Authentication")]
-        [Xunit.TraitAttribute("Description", "Signing in with invalid credentials")]
-        public async System.Threading.Tasks.Task SigningInWithInvalidCredentials()
+        [Xunit.TraitAttribute("Description", "Sign-in is refused for <case>")]
+        [Xunit.InlineDataAttribute("a wrong password", "admin", "wrong-password", new string[0])]
+        [Xunit.InlineDataAttribute("an unknown user", "intruder", "admin123", new string[0])]
+        [Xunit.InlineDataAttribute("empty credentials", "", "", new string[0])]
+        public async System.Threading.Tasks.Task Sign_InIsRefusedForCase(string @case, string username, string password, string[] exampleTags)
         {
-            string[] tagsOfScenario = ((string[])(null));
+            string[] tagsOfScenario = exampleTags;
             System.Collections.Specialized.OrderedDictionary argumentsOfScenario = new System.Collections.Specialized.OrderedDictionary();
-            global::Reqnroll.ScenarioInfo scenarioInfo = new global::Reqnroll.ScenarioInfo("Signing in with invalid credentials", null, tagsOfScenario, argumentsOfScenario, featureTags);
-#line 11
-    this.ScenarioInitialize(scenarioInfo);
+            argumentsOfScenario.Add("case", @case);
+            argumentsOfScenario.Add("username", username);
+            argumentsOfScenario.Add("password", password);
+            global::Reqnroll.ScenarioInfo scenarioInfo = new global::Reqnroll.ScenarioInfo("Sign-in is refused for <case>", null, tagsOfScenario, argumentsOfScenario, featureTags);
+#line 15
+        this.ScenarioInitialize(scenarioInfo);
 #line hidden
             if ((global::Reqnroll.TagHelper.ContainsIgnoreTag(scenarioInfo.CombinedTags) || global::Reqnroll.TagHelper.ContainsIgnoreTag(featureTags)))
             {
@@ -142,14 +148,14 @@ namespace AcceptanceTests.Features
             else
             {
                 await this.ScenarioStartAsync();
-#line 12
-        await testRunner.GivenAsync("the Capitrack app is open", ((string)(null)), ((global::Reqnroll.Table)(null)), "Given ");
+#line 16
+            await testRunner.GivenAsync("the Capitrack application is open", ((string)(null)), ((global::Reqnroll.Table)(null)), "Given ");
 #line hidden
-#line 13
-        await testRunner.WhenAsync("I sign in as \"admin\" with password \"wrong-password\"", ((string)(null)), ((global::Reqnroll.Table)(null)), "When ");
+#line 17
+            await testRunner.WhenAsync(string.Format("credentials \"{0}\" / \"{1}\" are submitted", username, password), ((string)(null)), ((global::Reqnroll.Table)(null)), "When ");
 #line hidden
-#line 14
-        await testRunner.ThenAsync("I should remain on the sign-in screen", ((string)(null)), ((global::Reqnroll.Table)(null)), "Then ");
+#line 18
+            await testRunner.ThenAsync("access is denied and the sign-in screen remains", ((string)(null)), ((global::Reqnroll.Table)(null)), "Then ");
 #line hidden
             }
             await this.ScenarioCleanupAsync();

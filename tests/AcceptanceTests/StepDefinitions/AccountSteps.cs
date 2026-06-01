@@ -1,36 +1,29 @@
 using AcceptanceTests.Support;
 using FluentAssertions;
-using Microsoft.Playwright;
 using Reqnroll;
 
 namespace AcceptanceTests.StepDefinitions;
 
 [Binding]
-public sealed class AccountSteps(IPage page, AppEnvironment app)
+public sealed class AccountSteps(CapitrackDriver app)
 {
-    [When(@"I create an account named ""(.*)""")]
-    public async Task WhenICreateAnAccount(string name)
+    [When(@"an account is created with the following details:")]
+    public async Task WhenAnAccountIsCreated(DataTable details)
     {
-        await page.GotoAsync($"{app.BaseUrl}/accounts", new PageGotoOptions { WaitUntil = WaitUntilState.NetworkIdle });
-        await page.WaitForSelectorAsync("nav.rail", new PageWaitForSelectorOptions { Timeout = 30000 });
-        await page.WaitForTimeoutAsync(1000);
-
-        await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Add account" }).First.ClickAsync();
-        await page.WaitForTimeoutAsync(800);
-
-        // The account form's first text input is the name.
-        var nameInput = page.Locator("input.input[type='text'], input.input:not([type])").First;
-        await nameInput.FillAsync(name);
-
-        await page.GetByRole(AriaRole.Button, new PageGetByRoleOptions { Name = "Save" }).First.ClickAsync();
-        await page.WaitForTimeoutAsync(1800);
+        var account = details.CreateInstance<AccountDetails>();
+        await app.CreateAccountAsync(account.Name);
     }
 
-    [Then(@"the account ""(.*)"" should appear in my accounts")]
-    public async Task ThenTheAccountShouldAppear(string name)
+    [When(@"an account named ""(.*)"" is created")]
+    public Task WhenAnAccountNamedIsCreated(string name) => app.CreateAccountAsync(name);
+
+    [Then(@"the account ""(.*)"" is listed under Accounts")]
+    public async Task ThenTheAccountIsListed(string name) =>
+        (await app.AccountIsListedAsync(name)).Should().BeTrue($"the account '{name}' should be listed under Accounts");
+
+    /// <summary>Row shape for the account-creation data table.</summary>
+    private sealed class AccountDetails
     {
-        await page.GotoAsync($"{app.BaseUrl}/accounts", new PageGotoOptions { WaitUntil = WaitUntilState.NetworkIdle });
-        await page.WaitForTimeoutAsync(1500);
-        (await page.GetByText(name).First.CountAsync()).Should().BeGreaterThan(0);
+        public string Name { get; init; } = "";
     }
 }

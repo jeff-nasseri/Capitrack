@@ -1,48 +1,27 @@
 using AcceptanceTests.Support;
 using FluentAssertions;
-using Microsoft.Playwright;
 using Reqnroll;
 
 namespace AcceptanceTests.StepDefinitions;
 
 [Binding]
-public sealed class AuthenticationSteps(IPage page, AppEnvironment app)
+public sealed class AuthenticationSteps(CapitrackDriver app)
 {
-    [Given(@"the Capitrack app is open")]
-    public async Task GivenTheAppIsOpen()
-    {
-        await page.GotoAsync(app.BaseUrl, new PageGotoOptions { WaitUntil = WaitUntilState.NetworkIdle });
-        await page.WaitForSelectorAsync("input[placeholder='Enter username']", new PageWaitForSelectorOptions { Timeout = 60000 });
-    }
+    [Given(@"the Capitrack application is open")]
+    public Task GivenTheApplicationIsOpen() => app.OpenAppAsync();
 
-    [Given(@"I am signed in")]
-    public async Task GivenIAmSignedIn()
-    {
-        await GivenTheAppIsOpen();
-        await WhenISignIn("admin", "admin123");
-        await page.WaitForSelectorAsync("nav.rail", new PageWaitForSelectorOptions { Timeout = 30000 });
-    }
+    [Given(@"an authenticated user is signed in")]
+    public Task GivenAnAuthenticatedUserIsSignedIn() => app.SignInAsAdministratorAsync();
 
-    [When(@"I sign in as ""(.*)"" with password ""(.*)""")]
-    public async Task WhenISignIn(string username, string password)
-    {
-        await page.FillAsync("input[placeholder='Enter username']", username);
-        await page.FillAsync("input[placeholder='Enter password']", password);
-        await page.ClickAsync("button[type='submit']");
-    }
+    [When(@"credentials ""(.*)"" / ""(.*)"" are submitted")]
+    public Task WhenCredentialsAreSubmitted(string username, string password) =>
+        app.SignInAsync(username, password);
 
-    [Then(@"I should see the dashboard")]
-    public async Task ThenIShouldSeeTheDashboard()
-    {
-        await page.WaitForSelectorAsync("nav.rail", new PageWaitForSelectorOptions { Timeout = 30000 });
-        (await page.Locator("nav.rail").CountAsync()).Should().BeGreaterThan(0);
-    }
+    [Then(@"the portfolio dashboard is shown")]
+    public async Task ThenTheDashboardIsShown() =>
+        (await app.IsSignedInAsync()).Should().BeTrue("the authenticated dashboard should be displayed");
 
-    [Then(@"I should remain on the sign-in screen")]
-    public async Task ThenIShouldRemainOnSignIn()
-    {
-        await page.WaitForTimeoutAsync(2500);
-        (await page.Locator("nav.rail").CountAsync()).Should().Be(0);
-        (await page.Locator("input[placeholder='Enter password']").CountAsync()).Should().BeGreaterThan(0);
-    }
+    [Then(@"access is denied and the sign-in screen remains")]
+    public async Task ThenAccessIsDenied() =>
+        (await app.IsOnSignInAsync()).Should().BeTrue("the user should be kept on the sign-in screen");
 }

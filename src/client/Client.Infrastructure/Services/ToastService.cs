@@ -1,8 +1,6 @@
 namespace Client.Infrastructure.Services;
 
-public record ToastMessage(string Message, string Type);
-
-/// <summary>Toast notifications — port of utils.js toast().</summary>
+/// <summary>Toast notifications — port of utils.js toast(). Raises <see cref="OnToast"/> for the host component to render.</summary>
 public class ToastService
 {
     public event Action<ToastMessage>? OnToast;

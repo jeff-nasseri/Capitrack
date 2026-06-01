@@ -26,8 +26,8 @@ namespace AcceptanceTests.Features
         
         private static string[] featureTags = ((string[])(null));
         
-        private static global::Reqnroll.FeatureInfo featureInfo = new global::Reqnroll.FeatureInfo(new System.Globalization.CultureInfo("en"), "Features", "Navigation", ("    As a signed-in user\n    I want to move between the main sections\n    So that " +
-                "I can manage every part of my wealth"), global::Reqnroll.ProgrammingLanguage.CSharp, featureTags);
+        private static global::Reqnroll.FeatureInfo featureInfo = new global::Reqnroll.FeatureInfo(new System.Globalization.CultureInfo("en"), "Features", "Navigation", ("    In order to manage every part of a portfolio from one place\n    As an authent" +
+                "icated user\n    Each main section is reachable and presents its own heading"), global::Reqnroll.ProgrammingLanguage.CSharp, featureTags);
         
         private Xunit.Abstractions.ITestOutputHelper _testOutputHelper;
         
@@ -88,7 +88,7 @@ namespace AcceptanceTests.Features
 #line 6
     #line hidden
 #line 7
-        await testRunner.GivenAsync("I am signed in", ((string)(null)), ((global::Reqnroll.Table)(null)), "Given ");
+        await testRunner.GivenAsync("an authenticated user is signed in", ((string)(null)), ((global::Reqnroll.Table)(null)), "Given ");
 #line hidden
         }
         
@@ -102,22 +102,22 @@ namespace AcceptanceTests.Features
             await this.TestTearDownAsync();
         }
         
-        [Xunit.SkippableTheoryAttribute(DisplayName="Visiting the main sections")]
+        [Xunit.SkippableTheoryAttribute(DisplayName="The <section> section presents its heading")]
         [Xunit.TraitAttribute("FeatureTitle", "Navigation")]
-        [Xunit.TraitAttribute("Description", "Visiting the main sections")]
+        [Xunit.TraitAttribute("Description", "The <section> section presents its heading")]
         [Xunit.InlineDataAttribute("holdings", "Holdings", new string[0])]
         [Xunit.InlineDataAttribute("accounts", "Accounts", new string[0])]
         [Xunit.InlineDataAttribute("activity", "Activity", new string[0])]
         [Xunit.InlineDataAttribute("goals", "Goals", new string[0])]
         [Xunit.InlineDataAttribute("calendar", "Calendar", new string[0])]
         [Xunit.InlineDataAttribute("settings", "Settings", new string[0])]
-        public async System.Threading.Tasks.Task VisitingTheMainSections(string path, string heading, string[] exampleTags)
+        public async System.Threading.Tasks.Task TheSectionSectionPresentsItsHeading(string section, string heading, string[] exampleTags)
         {
             string[] tagsOfScenario = exampleTags;
             System.Collections.Specialized.OrderedDictionary argumentsOfScenario = new System.Collections.Specialized.OrderedDictionary();
-            argumentsOfScenario.Add("path", path);
+            argumentsOfScenario.Add("section", section);
             argumentsOfScenario.Add("heading", heading);
-            global::Reqnroll.ScenarioInfo scenarioInfo = new global::Reqnroll.ScenarioInfo("Visiting the main sections", null, tagsOfScenario, argumentsOfScenario, featureTags);
+            global::Reqnroll.ScenarioInfo scenarioInfo = new global::Reqnroll.ScenarioInfo("The <section> section presents its heading", null, tagsOfScenario, argumentsOfScenario, featureTags);
 #line 9
     this.ScenarioInitialize(scenarioInfo);
 #line hidden
@@ -132,10 +132,10 @@ namespace AcceptanceTests.Features
     await this.FeatureBackgroundAsync();
 #line hidden
 #line 10
-        await testRunner.WhenAsync(string.Format("I navigate to \"{0}\"", path), ((string)(null)), ((global::Reqnroll.Table)(null)), "When ");
+        await testRunner.WhenAsync(string.Format("the {0} section is opened", section), ((string)(null)), ((global::Reqnroll.Table)(null)), "When ");
 #line hidden
 #line 11
-        await testRunner.ThenAsync(string.Format("the page should show \"{0}\"", heading), ((string)(null)), ((global::Reqnroll.Table)(null)), "Then ");
+        await testRunner.ThenAsync(string.Format("the \"{0}\" heading is displayed", heading), ((string)(null)), ((global::Reqnroll.Table)(null)), "Then ");
 #line hidden
             }
             await this.ScenarioCleanupAsync();

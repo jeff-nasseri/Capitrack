@@ -1,18 +1,35 @@
 using Server.Application.Common.Exceptions;
-using Server.Application.Goals;
 using Server.Application.Tags;
 
 namespace Server.Application.Goals.Commands;
 
+/// <summary>Updates an existing goal and its tag links.</summary>
+/// <param name="Id">The goal's identifier.</param>
+/// <param name="Title">The new title, or null/empty to keep the current value.</param>
+/// <param name="TargetAmount">The new target amount, or null to keep the current value.</param>
+/// <param name="TargetDate">The new target date, or null/empty to keep the current value.</param>
+/// <param name="Description">The new description, or null to keep the current value.</param>
+/// <param name="Achieved">The new achieved flag, or null to keep the current value.</param>
+/// <param name="CategoryId">The new category id, or null to keep the current value.</param>
+/// <param name="TagIds">The ids of tags to attach.</param>
 public record UpdateGoalCommand(
     int Id, string? Title, double? TargetAmount, string? TargetDate, string? Description,
     bool? Achieved, int? CategoryId, List<int>? TagIds) : IRequest<GoalDto>;
 
-public sealed class UpdateGoalHandler(IGoalRepository goals, ITagRepository tags, IUnitOfWork uow)
+/// <summary>Handles <see cref="UpdateGoalCommand"/>.</summary>
+public sealed class UpdateGoalHandler(
+    IGoalRepository goals,
+    ITagRepository tags,
+    IUnitOfWork uow,
+    IMapper mapper,
+    ILogger<UpdateGoalHandler> logger)
     : IRequestHandler<UpdateGoalCommand, GoalDto>
 {
+    /// <summary>Loads, updates and persists the goal, re-links its tags and returns the resulting DTO.</summary>
     public async Task<GoalDto> Handle(UpdateGoalCommand request, CancellationToken cancellationToken)
     {
+        logger.LogInformation("Handling {Request}", nameof(UpdateGoalCommand));
+
         var goal = await goals.GetAsync(request.Id, cancellationToken)
                    ?? throw new NotFoundException("Goal not found");
 
@@ -30,7 +47,9 @@ public sealed class UpdateGoalHandler(IGoalRepository goals, ITagRepository tags
 
         var ids = await goals.TagIdsAsync(goal.Id, cancellationToken);
         var goalTags = await tags.ByIdsAsync(ids, cancellationToken);
-        var dtos = goalTags.OrderBy(t => t.Name).Select(t => t.ToDto()).ToList();
-        return goal.ToDto(dtos);
+        var dtos = goalTags.OrderBy(t => t.Name).Select(t => mapper.Map<TagDto>(t)).ToList();
+
+        var dto = mapper.Map<GoalDto>(goal);
+        return dto with { Tags = dtos };
     }
 }

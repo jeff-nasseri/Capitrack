@@ -1,17 +1,17 @@
 Feature: Navigation
-    As a signed-in user
-    I want to move between the main sections
-    So that I can manage every part of my wealth
+    In order to manage every part of a portfolio from one place
+    As an authenticated user
+    Each main section is reachable and presents its own heading
 
     Background:
-        Given I am signed in
+        Given an authenticated user is signed in
 
-    Scenario Outline: Visiting the main sections
-        When I navigate to "<path>"
-        Then the page should show "<heading>"
+    Scenario Outline: The <section> section presents its heading
+        When the <section> section is opened
+        Then the "<heading>" heading is displayed
 
         Examples:
-            | path     | heading  |
+            | section  | heading  |
             | holdings | Holdings |
             | accounts | Accounts |
             | activity | Activity |

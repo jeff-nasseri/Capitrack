@@ -3,18 +3,25 @@ using System.Text;
 
 namespace Server.Application.Transactions.Queries;
 
+/// <summary>Exports transactions to CSV, optionally filtered to a single account.</summary>
+/// <param name="AccountId">An optional account filter.</param>
 public record ExportTransactionsCsvQuery(int? AccountId) : IRequest<string>;
 
+/// <summary>Handles <see cref="ExportTransactionsCsvQuery"/>.</summary>
 public sealed class ExportTransactionsCsvQueryHandler(
     ITransactionRepository transactions,
-    IAccountRepository accounts)
+    IAccountRepository accounts,
+    ILogger<ExportTransactionsCsvQueryHandler> logger)
     : IRequestHandler<ExportTransactionsCsvQuery, string>
 {
     private static readonly string[] Header =
         { "id", "account_name", "symbol", "type", "quantity", "price", "fee", "currency", "date", "notes" };
 
+    /// <summary>Loads the matching transactions and renders them as a CSV string.</summary>
     public async Task<string> Handle(ExportTransactionsCsvQuery request, CancellationToken cancellationToken)
     {
+        logger.LogInformation("Handling {Request}", nameof(ExportTransactionsCsvQuery));
+
         var items = await transactions.ListAsync(request.AccountId, null, null, null, cancellationToken);
         var names = (await accounts.ListAsync(cancellationToken)).ToDictionary(a => a.Id, a => a.Name);
 

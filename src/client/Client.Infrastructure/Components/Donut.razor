@@ -13,6 +13,7 @@
     [Parameter] public int Size { get; set; } = 160;
     [Parameter] public int Thickness { get; set; } = 18;
 
+    /// <summary>One slice of the donut: its weight (<paramref name="Value"/>) and fill <paramref name="Color"/>.</summary>
     public record DonutSegment(double Value, string Color);
     private record Arc(double Len, double Offset, string Color);
 

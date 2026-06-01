@@ -1,19 +1,29 @@
 using Server.Application.Tags;
-using Server.Application.Transactions;
 
 namespace Server.Application.Transactions.Queries;
 
+/// <summary>Returns transactions matching the optional account/symbol filters and paging.</summary>
+/// <param name="AccountId">An optional account filter.</param>
+/// <param name="Symbol">An optional symbol filter.</param>
+/// <param name="Limit">An optional page size.</param>
+/// <param name="Offset">An optional page offset.</param>
 public record GetTransactionsQuery(int? AccountId, string? Symbol, int? Limit, int? Offset)
     : IRequest<List<TransactionDto>>;
 
+/// <summary>Handles <see cref="GetTransactionsQuery"/>.</summary>
 public sealed class GetTransactionsQueryHandler(
     ITransactionRepository transactions,
     IAccountRepository accounts,
-    ITagRepository tags)
+    ITagRepository tags,
+    IMapper mapper,
+    ILogger<GetTransactionsQueryHandler> logger)
     : IRequestHandler<GetTransactionsQuery, List<TransactionDto>>
 {
+    /// <summary>Loads the matching transactions, resolves account names and tags, and returns the resulting DTOs.</summary>
     public async Task<List<TransactionDto>> Handle(GetTransactionsQuery request, CancellationToken cancellationToken)
     {
+        logger.LogInformation("Handling {Request}", nameof(GetTransactionsQuery));
+
         var items = await transactions.ListAsync(request.AccountId, request.Symbol, request.Limit, request.Offset, cancellationToken);
         var names = (await accounts.ListAsync(cancellationToken)).ToDictionary(a => a.Id, a => a.Name);
 
@@ -23,9 +33,10 @@ public sealed class GetTransactionsQueryHandler(
             var tagIds = await transactions.TagIdsAsync(t.Id, cancellationToken);
             var tagDtos = (await tags.ByIdsAsync(tagIds, cancellationToken))
                 .OrderBy(tg => tg.Name)
-                .Select(tg => tg.ToDto())
+                .Select(tg => mapper.Map<TagDto>(tg))
                 .ToList();
-            result.Add(t.ToDto(names.GetValueOrDefault(t.AccountId), tagDtos));
+            var dto = mapper.Map<TransactionDto>(t);
+            result.Add(dto with { AccountName = names.GetValueOrDefault(t.AccountId), Tags = tagDtos });
         }
         return result;
     }

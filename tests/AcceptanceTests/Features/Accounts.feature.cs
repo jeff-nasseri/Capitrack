@@ -19,22 +19,22 @@ namespace AcceptanceTests.Features
     
     [System.CodeDom.Compiler.GeneratedCodeAttribute("Reqnroll", "2.0.0.0")]
     [System.Runtime.CompilerServices.CompilerGeneratedAttribute()]
-    public partial class AccountsFeature : object, Xunit.IClassFixture<AccountsFeature.FixtureData>, Xunit.IAsyncLifetime
+    public partial class AccountCreationFeature : object, Xunit.IClassFixture<AccountCreationFeature.FixtureData>, Xunit.IAsyncLifetime
     {
         
         private global::Reqnroll.ITestRunner testRunner;
         
         private static string[] featureTags = ((string[])(null));
         
-        private static global::Reqnroll.FeatureInfo featureInfo = new global::Reqnroll.FeatureInfo(new System.Globalization.CultureInfo("en"), "Features", "Accounts", ("    As a signed-in user\n    I want to create an account\n    So that I can group m" +
-                "y holdings"), global::Reqnroll.ProgrammingLanguage.CSharp, featureTags);
+        private static global::Reqnroll.FeatureInfo featureInfo = new global::Reqnroll.FeatureInfo(new System.Globalization.CultureInfo("en"), "Features", "Account creation", ("    In order to group holdings by where they are held\n    As an authenticated use" +
+                "r\n    A newly created account becomes visible under Accounts"), global::Reqnroll.ProgrammingLanguage.CSharp, featureTags);
         
         private Xunit.Abstractions.ITestOutputHelper _testOutputHelper;
         
 #line 1 "Accounts.feature"
 #line hidden
         
-        public AccountsFeature(AccountsFeature.FixtureData fixtureData, Xunit.Abstractions.ITestOutputHelper testOutputHelper)
+        public AccountCreationFeature(AccountCreationFeature.FixtureData fixtureData, Xunit.Abstractions.ITestOutputHelper testOutputHelper)
         {
             this._testOutputHelper = testOutputHelper;
         }
@@ -88,7 +88,7 @@ namespace AcceptanceTests.Features
 #line 6
     #line hidden
 #line 7
-        await testRunner.GivenAsync("I am signed in", ((string)(null)), ((global::Reqnroll.Table)(null)), "Given ");
+        await testRunner.GivenAsync("an authenticated user is signed in", ((string)(null)), ((global::Reqnroll.Table)(null)), "Given ");
 #line hidden
         }
         
@@ -102,14 +102,14 @@ namespace AcceptanceTests.Features
             await this.TestTearDownAsync();
         }
         
-        [Xunit.SkippableFactAttribute(DisplayName="Creating a new account")]
-        [Xunit.TraitAttribute("FeatureTitle", "Accounts")]
-        [Xunit.TraitAttribute("Description", "Creating a new account")]
-        public async System.Threading.Tasks.Task CreatingANewAccount()
+        [Xunit.SkippableFactAttribute(DisplayName="A new account is created from a set of details")]
+        [Xunit.TraitAttribute("FeatureTitle", "Account creation")]
+        [Xunit.TraitAttribute("Description", "A new account is created from a set of details")]
+        public async System.Threading.Tasks.Task ANewAccountIsCreatedFromASetOfDetails()
         {
             string[] tagsOfScenario = ((string[])(null));
             System.Collections.Specialized.OrderedDictionary argumentsOfScenario = new System.Collections.Specialized.OrderedDictionary();
-            global::Reqnroll.ScenarioInfo scenarioInfo = new global::Reqnroll.ScenarioInfo("Creating a new account", null, tagsOfScenario, argumentsOfScenario, featureTags);
+            global::Reqnroll.ScenarioInfo scenarioInfo = new global::Reqnroll.ScenarioInfo("A new account is created from a set of details", null, tagsOfScenario, argumentsOfScenario, featureTags);
 #line 9
     this.ScenarioInitialize(scenarioInfo);
 #line hidden
@@ -123,11 +123,52 @@ namespace AcceptanceTests.Features
 #line 6
     await this.FeatureBackgroundAsync();
 #line hidden
+                global::Reqnroll.Table table1 = new global::Reqnroll.Table(new string[] {
+                            "Field",
+                            "Value"});
+                table1.AddRow(new string[] {
+                            "Name",
+                            "Brokerage"});
 #line 10
-        await testRunner.WhenAsync("I create an account named \"Brokerage\"", ((string)(null)), ((global::Reqnroll.Table)(null)), "When ");
+        await testRunner.WhenAsync("an account is created with the following details:", ((string)(null)), table1, "When ");
 #line hidden
-#line 11
-        await testRunner.ThenAsync("the account \"Brokerage\" should appear in my accounts", ((string)(null)), ((global::Reqnroll.Table)(null)), "Then ");
+#line 13
+        await testRunner.ThenAsync("the account \"Brokerage\" is listed under Accounts", ((string)(null)), ((global::Reqnroll.Table)(null)), "Then ");
+#line hidden
+            }
+            await this.ScenarioCleanupAsync();
+        }
+        
+        [Xunit.SkippableTheoryAttribute(DisplayName="Accounts of different kinds can be created")]
+        [Xunit.TraitAttribute("FeatureTitle", "Account creation")]
+        [Xunit.TraitAttribute("Description", "Accounts of different kinds can be created")]
+        [Xunit.InlineDataAttribute("Savings", new string[0])]
+        [Xunit.InlineDataAttribute("Pension", new string[0])]
+        [Xunit.InlineDataAttribute("Crypto Wallet", new string[0])]
+        public async System.Threading.Tasks.Task AccountsOfDifferentKindsCanBeCreated(string name, string[] exampleTags)
+        {
+            string[] tagsOfScenario = exampleTags;
+            System.Collections.Specialized.OrderedDictionary argumentsOfScenario = new System.Collections.Specialized.OrderedDictionary();
+            argumentsOfScenario.Add("name", name);
+            global::Reqnroll.ScenarioInfo scenarioInfo = new global::Reqnroll.ScenarioInfo("Accounts of different kinds can be created", null, tagsOfScenario, argumentsOfScenario, featureTags);
+#line 15
+    this.ScenarioInitialize(scenarioInfo);
+#line hidden
+            if ((global::Reqnroll.TagHelper.ContainsIgnoreTag(scenarioInfo.CombinedTags) || global::Reqnroll.TagHelper.ContainsIgnoreTag(featureTags)))
+            {
+                testRunner.SkipScenario();
+            }
+            else
+            {
+                await this.ScenarioStartAsync();
+#line 6
+    await this.FeatureBackgroundAsync();
+#line hidden
+#line 16
+        await testRunner.WhenAsync(string.Format("an account named \"{0}\" is created", name), ((string)(null)), ((global::Reqnroll.Table)(null)), "When ");
+#line hidden
+#line 17
+        await testRunner.ThenAsync(string.Format("the account \"{0}\" is listed under Accounts", name), ((string)(null)), ((global::Reqnroll.Table)(null)), "Then ");
 #line hidden
             }
             await this.ScenarioCleanupAsync();
@@ -140,12 +181,12 @@ namespace AcceptanceTests.Features
             
             async System.Threading.Tasks.Task Xunit.IAsyncLifetime.InitializeAsync()
             {
-                await AccountsFeature.FeatureSetupAsync();
+                await AccountCreationFeature.FeatureSetupAsync();
             }
             
             async System.Threading.Tasks.Task Xunit.IAsyncLifetime.DisposeAsync()
             {
-                await AccountsFeature.FeatureTearDownAsync();
+                await AccountCreationFeature.FeatureTearDownAsync();
             }
         }
     }

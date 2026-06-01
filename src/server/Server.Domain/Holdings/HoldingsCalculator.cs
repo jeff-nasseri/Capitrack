@@ -2,19 +2,6 @@ using Server.Domain.Transactions;
 
 namespace Server.Domain.Holdings;
 
-/// <summary>A computed position in a single symbol (read model produced from transactions).</summary>
-public sealed record Holding(
-    Symbol Symbol,
-    double Quantity,
-    double? AvgCost,
-    double TotalCost,
-    int TransactionCount,
-    string? FirstTransaction,
-    string? LastTransaction);
-
-/// <summary>Net position in a symbol within a specific account.</summary>
-public sealed record AccountHolding(Symbol Symbol, int AccountId, double Quantity, double AvgCost);
-
 /// <summary>
 /// Pure holdings/aggregation math (domain service), ported 1:1 from the original
 /// SQL. Side-effect free so it can be unit-tested directly.

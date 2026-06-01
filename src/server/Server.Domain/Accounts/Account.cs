@@ -1,55 +1,40 @@
 namespace Server.Domain.Accounts;
 
-/// <summary>The kind of account. Tolerant smart enum: known values are constants, unknown values are accepted (lower-cased) to preserve the open contract.</summary>
-public sealed class AccountType : ValueObject
-{
-    public string Value { get; }
-    private AccountType(string value) => Value = value;
-
-    public static readonly AccountType General = new("general");
-    public static readonly AccountType Stock = new("stock");
-    public static readonly AccountType Crypto = new("crypto");
-    public static readonly AccountType Commodity = new("commodity");
-    public static readonly AccountType Cash = new("cash");
-
-    private static readonly IReadOnlyList<AccountType> Known = new[] { General, Stock, Crypto, Commodity, Cash };
-
-    public static AccountType From(string? value)
-    {
-        var v = (value ?? string.Empty).Trim();
-        if (v.Length == 0) return General;
-        return Known.FirstOrDefault(t => t.Value.Equals(v, StringComparison.OrdinalIgnoreCase))
-               ?? new AccountType(v.ToLowerInvariant());
-    }
-
-    protected override IEnumerable<object?> GetEqualityComponents() { yield return Value; }
-    public override string ToString() => Value;
-}
-
-/// <summary>Join entity linking an <see cref="Account"/> to a tag.</summary>
-public sealed class AccountTag
-{
-    public int AccountId { get; set; }
-    public int TagId { get; set; }
-}
-
 /// <summary>An account groups transactions under a base currency. Aggregate root.</summary>
 public sealed class Account : AggregateRoot<int>
 {
+    /// <summary>The account's display name.</summary>
     public string Name { get; private set; } = "";
+
+    /// <summary>The account type.</summary>
     public AccountType Type { get; private set; } = AccountType.General;
+
+    /// <summary>The account's base currency.</summary>
     public CurrencyCode Currency { get; private set; } = CurrencyCode.Eur;
+
+    /// <summary>A free-text description.</summary>
     public string Description { get; private set; } = "";
+
+    /// <summary>The icon identifier used by the client.</summary>
     public string Icon { get; private set; } = "wallet";
+
+    /// <summary>The account's display color.</summary>
     public Color Color { get; private set; } = Color.Default;
+
+    /// <summary>When the account was created.</summary>
     public DateTime CreatedAt { get; private set; }
+
+    /// <summary>When the account was last updated.</summary>
     public DateTime UpdatedAt { get; private set; }
 
     private readonly List<AccountTag> _tags = new();
+
+    /// <summary>The tags attached to this account.</summary>
     public IReadOnlyCollection<AccountTag> Tags => _tags.AsReadOnly();
 
     private Account() { }
 
+    /// <summary>Creates a new account, requiring a non-empty name.</summary>
     public static Account Create(string? name, AccountType type, CurrencyCode currency,
                                  string? description, string? icon, Color color)
     {
@@ -66,6 +51,7 @@ public sealed class Account : AggregateRoot<int>
         };
     }
 
+    /// <summary>Updates the account's editable fields, requiring a non-empty name.</summary>
     public void Update(string? name, AccountType type, CurrencyCode currency,
                        string? description, string? icon, Color color)
     {

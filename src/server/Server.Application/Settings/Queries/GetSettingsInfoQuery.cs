@@ -1,18 +1,26 @@
 using Server.Application.Common;
-using Server.Application.Settings;
 
 namespace Server.Application.Settings.Queries;
 
+/// <summary>Returns application metadata for the settings screen.</summary>
 public record GetSettingsInfoQuery : IRequest<AppMetaDto>;
 
-public sealed class GetSettingsInfoQueryHandler(ISystemService system)
+/// <summary>Handles <see cref="GetSettingsInfoQuery"/>.</summary>
+public sealed class GetSettingsInfoQueryHandler(
+    ISystemService system,
+    ILogger<GetSettingsInfoQueryHandler> logger)
     : IRequestHandler<GetSettingsInfoQuery, AppMetaDto>
 {
+    /// <summary>Assembles the application metadata from the system service and static app info.</summary>
     public Task<AppMetaDto> Handle(GetSettingsInfoQuery request, CancellationToken cancellationToken)
-        => Task.FromResult(new AppMetaDto(
+    {
+        logger.LogInformation("Handling {Request}", nameof(GetSettingsInfoQuery));
+
+        return Task.FromResult(new AppMetaDto(
             system.DbPath,
             AppInfo.Version,
             AppInfo.Name,
             AppInfo.Repository,
             AppInfo.License));
+    }
 }

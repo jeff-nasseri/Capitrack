@@ -1,4 +1,11 @@
 global using MediatR;
 global using Microsoft.AspNetCore.Authorization;
 global using Microsoft.AspNetCore.Mvc;
-global using Server.Application.Common.Models;
+global using Server.Application.Accounts;
+global using Server.Application.Transactions;
+global using Server.Application.Goals;
+global using Server.Application.Tags;
+global using Server.Application.Currencies;
+global using Server.Application.Auth;
+global using Server.Application.Prices;
+global using Server.Application.Settings;

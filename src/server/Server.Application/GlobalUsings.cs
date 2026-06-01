@@ -1,7 +1,16 @@
 global using MediatR;
 global using FluentValidation;
+global using AutoMapper;
+global using Microsoft.Extensions.Logging;
 global using Server.Domain.Common;
 global using Server.Domain.Enums;
 global using Server.Domain.ValueObjects;
 global using Server.Application.Common.Interfaces;
-global using Server.Application.Common.Models;
+global using Server.Application.Accounts;
+global using Server.Application.Transactions;
+global using Server.Application.Goals;
+global using Server.Application.Tags;
+global using Server.Application.Currencies;
+global using Server.Application.Auth;
+global using Server.Application.Prices;
+global using Server.Application.Settings;

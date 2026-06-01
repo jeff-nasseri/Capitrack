@@ -1,23 +1,39 @@
 using Server.Application.Common.Exceptions;
 using Server.Application.Tags;
-using Server.Application.Transactions;
 
 namespace Server.Application.Transactions.Commands;
 
+/// <summary>Updates an existing transaction and its tag links.</summary>
+/// <param name="Id">The transaction's identifier.</param>
+/// <param name="Symbol">The new symbol, or null to keep the current value.</param>
+/// <param name="Type">The new type string, or null to keep the current value.</param>
+/// <param name="Quantity">The new quantity, or null to keep the current value.</param>
+/// <param name="Price">The new unit price, or null to keep the current value.</param>
+/// <param name="Fee">The new fee, or null to keep the current value.</param>
+/// <param name="Currency">The new currency code, or null to keep the current value.</param>
+/// <param name="Date">The new trade date, or null to keep the current value.</param>
+/// <param name="Notes">The new notes, or null to keep the current value.</param>
+/// <param name="TagIds">The ids of tags to attach.</param>
 public record UpdateTransactionCommand(
     int Id, string? Symbol, string? Type, double? Quantity, double? Price,
     double? Fee, string? Currency, string? Date, string? Notes, List<int>? TagIds)
     : IRequest<TransactionDto>;
 
+/// <summary>Handles <see cref="UpdateTransactionCommand"/>.</summary>
 public sealed class UpdateTransactionHandler(
     ITransactionRepository transactions,
     IAccountRepository accounts,
     ITagRepository tags,
-    IUnitOfWork uow)
+    IUnitOfWork uow,
+    IMapper mapper,
+    ILogger<UpdateTransactionHandler> logger)
     : IRequestHandler<UpdateTransactionCommand, TransactionDto>
 {
+    /// <summary>Loads, updates and persists the transaction, re-links its tags and returns the resulting DTO.</summary>
     public async Task<TransactionDto> Handle(UpdateTransactionCommand request, CancellationToken cancellationToken)
     {
+        logger.LogInformation("Handling {Request}", nameof(UpdateTransactionCommand));
+
         var t = await transactions.GetAsync(request.Id, cancellationToken)
                 ?? throw new NotFoundException("Transaction not found");
 
@@ -47,10 +63,11 @@ public sealed class UpdateTransactionHandler(
         var tagIds = await transactions.TagIdsAsync(request.Id, cancellationToken);
         var tagDtos = (await tags.ByIdsAsync(tagIds, cancellationToken))
             .OrderBy(tg => tg.Name)
-            .Select(tg => tg.ToDto())
+            .Select(tg => mapper.Map<TagDto>(tg))
             .ToList();
         var account = await accounts.GetAsync(t.AccountId, cancellationToken);
 
-        return t.ToDto(account?.Name, tagDtos);
+        var dto = mapper.Map<TransactionDto>(t);
+        return dto with { AccountName = account?.Name, Tags = tagDtos };
     }
 }
