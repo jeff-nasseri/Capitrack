@@ -21,6 +21,8 @@ portfolio analytics, CSV import, financial goals, and a wealth calendar.
 
 Built with a **.NET 10 (ASP.NET Core) API** and a **Blazor WebAssembly** frontend.
 
+🌐 **Website:** [capitrack.dev](https://capitrack.dev) &nbsp;·&nbsp; 📖 **Documentation:** [capitrack.dev/docs](https://capitrack.dev/docs/getting-started.html)
+
 ## Quick start
 
 ```bash
@@ -51,7 +53,11 @@ To choose your own password instead, copy `.env.example` to `.env` and set
 
 ## Documentation
 
-Full documentation lives in [`docs/`](docs/):
+📖 Read the documentation online at **[capitrack.dev/docs](https://capitrack.dev/docs/getting-started.html)**
+([Getting Started](https://capitrack.dev/docs/getting-started.html) ·
+[Configuration](https://capitrack.dev/docs/configuration.html) ·
+[CSV Import](https://capitrack.dev/docs/csv-import.html) ·
+[API Reference](https://capitrack.dev/docs/api-reference.html)) — or browse the full source in [`docs/`](docs/):
 
 | Doc | What it covers |
 |-----|----------------|
