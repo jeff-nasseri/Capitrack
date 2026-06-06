@@ -22,7 +22,7 @@ public sealed class ExportTransactionsCsvQueryHandler(
     {
         logger.LogInformation("Handling {Request}", nameof(ExportTransactionsCsvQuery));
 
-        var items = await transactions.ListAsync(request.AccountId, null, null, null, cancellationToken);
+        var items = await transactions.ListAsync(request.AccountId, null, null, null, null, null, cancellationToken);
         var names = (await accounts.ListAsync(cancellationToken)).ToDictionary(a => a.Id, a => a.Name);
 
         var sb = new StringBuilder();

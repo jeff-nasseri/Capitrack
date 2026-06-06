@@ -1,0 +1,39 @@
+@namespace Client.Infrastructure.Components
+@implements IDisposable
+@inject ConfirmService Confirm
+
+@if (Confirm.Current is { } req)
+{
+    var accent = req.Danger ? "var(--down)" : "var(--pri-2)";
+    var accentSoft = req.Danger ? "var(--down-soft)" : "var(--pri-soft)";
+    var iconName = req.Icon ?? (req.Danger ? "trash" : "info");
+
+    <div class="modal-overlay" style="z-index:300;" @onclick="Cancel">
+        <div class="modal" style="max-width:440px;" @onclick:stopPropagation="true">
+            <div class="modal-body" style="padding:24px;">
+                <div class="flex gap-3" style="align-items:flex-start;">
+                    <div style="@($"flex-shrink:0;width:42px;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:{accentSoft};color:{accent};")">
+                        <Icon Name="@iconName" Width="20" Height="20" />
+                    </div>
+                    <div style="flex:1;min-width:0;">
+                        <h3 style="font-size:1.05rem;font-weight:750;letter-spacing:-0.01em;margin-bottom:6px;">@req.Title</h3>
+                        <p class="sub" style="white-space:pre-line;line-height:1.5;">@req.Message</p>
+                    </div>
+                </div>
+                <div class="flex gap-2" style="justify-content:flex-end;margin-top:24px;">
+                    <button class="btn btn-ghost btn-sm" @onclick="Cancel">@req.CancelText</button>
+                    <button class="btn btn-sm @(req.Danger ? "btn-danger" : "btn-pri")" @onclick="Ok" autofocus>@req.ConfirmText</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private void Ok() => Confirm.Resolve(true);
+    private void Cancel() => Confirm.Resolve(false);
+
+    protected override void OnInitialized() => Confirm.OnChange += Refresh;
+    private void Refresh() => InvokeAsync(StateHasChanged);
+    public void Dispose() => Confirm.OnChange -= Refresh;
+}

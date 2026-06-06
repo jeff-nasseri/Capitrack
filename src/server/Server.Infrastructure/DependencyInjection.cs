@@ -31,6 +31,7 @@ public static class DependencyInjection
         services.AddScoped<IPriceService, PriceService>();
         services.AddScoped<IWealthService, WealthService>();
         services.AddScoped<IImporterService, ImporterService>();
+        services.AddScoped<IDatabaseBackupService, DatabaseBackupService>();
 
         return services;
     }

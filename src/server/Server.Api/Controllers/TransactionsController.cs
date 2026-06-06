@@ -13,9 +13,27 @@ public sealed class TransactionsController(IMediator mediator) : ControllerBase
     public async Task<IActionResult> List(
         [FromQuery(Name = "account_id")] int? accountId,
         [FromQuery] string? symbol,
+        [FromQuery] string? search,
+        [FromQuery] string? type,
         [FromQuery] int? limit,
-        [FromQuery] int? offset) =>
-        Ok(await mediator.Send(new GetTransactionsQuery(accountId, symbol, limit, offset)));
+        [FromQuery] int? offset,
+        [FromQuery] int? page,
+        [FromQuery(Name = "page_size")] int? pageSize)
+    {
+        // page/page_size, when valid, take precedence over raw limit/offset.
+        if (page is >= 1 && pageSize is >= 1)
+        {
+            offset = (page.Value - 1) * pageSize.Value;
+            limit = pageSize.Value;
+        }
+
+        // Always expose the unpaged total so the client can drive pagination.
+        var total = await mediator.Send(new GetTransactionsCountQuery(accountId, symbol, search, type));
+        Response.Headers.Append("X-Total-Count", total.ToString());
+
+        var items = await mediator.Send(new GetTransactionsQuery(accountId, symbol, search, type, limit, offset));
+        return Ok(items);
+    }
 
     [HttpGet("{id:int}")]
     public async Task<IActionResult> Get(int id) => Ok(await mediator.Send(new GetTransactionByIdQuery(id)));

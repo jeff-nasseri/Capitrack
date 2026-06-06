@@ -4,6 +4,7 @@
 @inject AppState State
 @inject ModalService Modal
 @inject ToastService Toast
+@inject ConfirmService Confirm
 @inject TopBarState TopBar
 @inject NavigationManager Nav
 @inject IJSRuntime JS
@@ -291,7 +292,7 @@
     private async Task DeleteTx(TransactionDto tx)
     {
         _openTxId = null;
-        if (!await JS.InvokeAsync<bool>("capitrack.confirm", "Delete this transaction?")) return;
+        if (!await Confirm.AskAsync("Delete transaction", $"Delete the {tx.Type} of {tx.Symbol}? This can't be undone.", "Delete", danger: true)) return;
         await Api.DeleteAsync<object>($"/api/transactions/{tx.Id}");
         Toast.Show("Transaction deleted", "success");
         await Reload();

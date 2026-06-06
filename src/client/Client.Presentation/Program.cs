@@ -23,6 +23,7 @@ builder.Services.AddScoped<IApiClient>(sp => sp.GetRequiredService<ApiClient>())
 builder.Services.AddScoped<AppState>();
 builder.Services.AddScoped<ToastService>();
 builder.Services.AddScoped<ModalService>();
+builder.Services.AddScoped<ConfirmService>();
 builder.Services.AddScoped<SettingsStore>();
 builder.Services.AddScoped<TopBarState>();
 

@@ -39,6 +39,26 @@ public class ApiClient(HttpClient http) : IApiClient
         return await r.Content.ReadFromJsonAsync<T>(Json);
     }
 
+    /// <summary>
+    /// GETs a payload together with the total row count advertised by the
+    /// <c>X-Total-Count</c> response header (used for server-side pagination).
+    /// Returns a zero count when the header is absent.
+    /// </summary>
+    public async Task<(T? value, int total)> GetWithCountAsync<T>(string url)
+    {
+        var r = await http.GetAsync(url);
+        if (!Check(r, url)) return (default, 0);
+        var value = await r.Content.ReadFromJsonAsync<T>(Json);
+
+        var total = 0;
+        if ((r.Headers.TryGetValues("X-Total-Count", out var values) ||
+             r.Content.Headers.TryGetValues("X-Total-Count", out values)) &&
+            int.TryParse(values.FirstOrDefault(), out var parsed))
+            total = parsed;
+
+        return (value, total);
+    }
+
     public async Task<T?> PostAsync<T>(string url, object body, JsonSerializerOptions? opts = null)
     {
         var r = await http.PostAsJsonAsync(url, body, opts ?? Json);
@@ -81,5 +101,14 @@ public class ApiClient(HttpClient http) : IApiClient
         var r = await http.PostAsync(url, content);
         if (r.StatusCode == HttpStatusCode.Unauthorized) { Unauthorized?.Invoke(); return default; }
         return await r.Content.ReadFromJsonAsync<T>(Json);
+    }
+
+    /// <summary>Multipart POST that also reports whether the request succeeded (for upload flows that surface errors).</summary>
+    public async Task<(bool ok, T? value)> PostFormWithStatusAsync<T>(string url, MultipartFormDataContent content)
+    {
+        var r = await http.PostAsync(url, content);
+        if (r.StatusCode == HttpStatusCode.Unauthorized && !url.Contains("/auth/")) Unauthorized?.Invoke();
+        var value = await r.Content.ReadFromJsonAsync<T>(Json);
+        return (r.IsSuccessStatusCode, value);
     }
 }

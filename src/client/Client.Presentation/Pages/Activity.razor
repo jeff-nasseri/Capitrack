@@ -2,6 +2,7 @@
 @inject ApiClient Api
 @inject ModalService Modal
 @inject ToastService Toast
+@inject ConfirmService Confirm
 @inject TopBarState TopBar
 @inject IJSRuntime JS
 
@@ -25,16 +26,59 @@
             <option value="dividend">Dividend</option>
             <option value="transfer_in">Transfer in</option>
         </select>
-        <span class="sub" style="margin-left:auto;align-self:center;">@_filtered.Count transactions</span>
+        <select class="input btn-sm" style="height:36px;width:auto;padding-right:28px;" value="@_pageSize" @onchange="OnPageSize">
+            <option value="25">25 / page</option>
+            <option value="50">50 / page</option>
+            <option value="100">100 / page</option>
+        </select>
+        <span class="sub" style="margin-left:auto;align-self:center;">@_total transaction@(_total == 1 ? "" : "s")</span>
     </div>
 
     @if (_loading)
     {
         <div class="loading-spinner">Loading…</div>
     }
+    else if (_transactions.Count == 0)
+    {
+        <div class="empty-state"><Icon Name="receipt" /><p>No transactions match these filters.</p></div>
+    }
     else
     {
-        <ActivityTable Transactions="_filtered" OnEdit="EditTx" OnDelete="DeleteTx" />
+        <ActivityTable Transactions="_transactions" OnEdit="EditTx" OnDelete="DeleteTx" />
+
+        @if (_totalPages > 1)
+        {
+            <div class="flex gap-2" style="justify-content:center;align-items:center;margin-top:18px;flex-wrap:wrap;">
+                <button class="btn btn-ghost btn-sm" disabled="@(_page <= 1)" @onclick="() => GoTo(_page - 1)">Prev</button>
+
+                @if (PageWindow().First() > 1)
+                {
+                    <button class="btn btn-ghost btn-sm" style="min-width:34px;" @onclick="() => GoTo(1)">1</button>
+                    @if (PageWindow().First() > 2)
+                    {
+                        <span class="sub" style="padding:0 2px;">…</span>
+                    }
+                }
+
+                @foreach (var p in PageWindow())
+                {
+                    var current = p;
+                    <button class="btn btn-sm @(current == _page ? "btn-pri" : "btn-ghost")" style="min-width:34px;" @onclick="() => GoTo(current)">@current</button>
+                }
+
+                @if (PageWindow().Last() < _totalPages)
+                {
+                    @if (PageWindow().Last() < _totalPages - 1)
+                    {
+                        <span class="sub" style="padding:0 2px;">…</span>
+                    }
+                    <button class="btn btn-ghost btn-sm" style="min-width:34px;" @onclick="() => GoTo(_totalPages)">@_totalPages</button>
+                }
+
+                <button class="btn btn-ghost btn-sm" disabled="@(_page >= _totalPages)" @onclick="() => GoTo(_page + 1)">Next</button>
+            </div>
+            <p class="sub" style="text-align:center;margin-top:8px;">Showing @_rangeStart–@_rangeEnd of @_total</p>
+        }
     }
 </div>
 
@@ -43,20 +87,34 @@
     private List<AccountDto> _accounts = [];
     private List<TagDto> _tags = [];
     private bool _loading = true;
+
     private string _search = "";
     private string _acct = "All";
     private string _type = "All";
 
-    private List<TransactionDto> _filtered =>
-        _transactions.Where(t =>
-            (_acct == "All" || t.AccountName == _acct) &&
-            (_type == "All" || t.Type == _type) &&
-            (_search == "" || (t.Symbol ?? "").Contains(_search, StringComparison.OrdinalIgnoreCase)))
-        .ToList();
+    private int _page = 1;
+    private int _pageSize = 25;
+    private int _total;
+
+    private CancellationTokenSource _searchDebounce = new();
+
+    private int _totalPages => Math.Max(1, (int)Math.Ceiling(_total / (double)_pageSize));
+    private int _rangeStart => _total == 0 ? 0 : (_page - 1) * _pageSize + 1;
+    private int _rangeEnd => Math.Min(_page * _pageSize, _total);
+
+    // A small window of page numbers around the current page (±2).
+    private IEnumerable<int> PageWindow()
+    {
+        const int span = 2;
+        var start = Math.Max(1, _page - span);
+        var end = Math.Min(_totalPages, _page + span);
+        for (var p = start; p <= end; p++) yield return p;
+    }
 
     protected override async Task OnInitializedAsync()
     {
         TopBar.Set("Activity", Actions);
+        _accounts = await Api.GetAsync<List<AccountDto>>("/api/accounts") ?? [];
         await Load();
     }
 
@@ -64,17 +122,52 @@
 
     private async Task Load()
     {
-        var txTask = Api.GetAsync<List<TransactionDto>>("/api/transactions?limit=200");
-        var acctTask = Api.GetAsync<List<AccountDto>>("/api/accounts");
-        await Task.WhenAll(txTask, acctTask);
-        _transactions = await txTask ?? [];
-        _accounts = await acctTask ?? [];
+        _loading = true;
+        StateHasChanged();
+
+        var query = new List<string> { $"page={_page}", $"page_size={_pageSize}" };
+        if (_acct != "All" && _accounts.FirstOrDefault(a => a.Name == _acct)?.Id is int accountId)
+            query.Add($"account_id={accountId}");
+        if (_type != "All") query.Add($"type={Uri.EscapeDataString(_type)}");
+        if (!string.IsNullOrWhiteSpace(_search)) query.Add($"search={Uri.EscapeDataString(_search.Trim())}");
+
+        var (items, total) = await Api.GetWithCountAsync<List<TransactionDto>>("/api/transactions?" + string.Join("&", query));
+        _transactions = items ?? [];
+        _total = total;
+        // If a filter shrank the result set below the current page, step back into range.
+        if (_page > _totalPages) { _page = _totalPages; await Load(); return; }
         _loading = false;
+        StateHasChanged();
     }
 
-    private void OnSearch(ChangeEventArgs e) => _search = e.Value?.ToString() ?? "";
-    private void OnAcct(ChangeEventArgs e) => _acct = e.Value?.ToString() ?? "All";
-    private void OnType(ChangeEventArgs e) => _type = e.Value?.ToString() ?? "All";
+    private async Task GoTo(int page)
+    {
+        var target = Math.Clamp(page, 1, _totalPages);
+        if (target == _page) return;
+        _page = target;
+        await Load();
+    }
+
+    private async Task OnSearch(ChangeEventArgs e)
+    {
+        _search = e.Value?.ToString() ?? "";
+        _searchDebounce.Cancel();
+        _searchDebounce = new CancellationTokenSource();
+        var token = _searchDebounce.Token;
+        try { await Task.Delay(350, token); }
+        catch (TaskCanceledException) { return; }
+        _page = 1;
+        await Load();
+    }
+
+    private async Task OnAcct(ChangeEventArgs e) { _acct = e.Value?.ToString() ?? "All"; _page = 1; await Load(); }
+    private async Task OnType(ChangeEventArgs e) { _type = e.Value?.ToString() ?? "All"; _page = 1; await Load(); }
+    private async Task OnPageSize(ChangeEventArgs e)
+    {
+        _pageSize = int.TryParse(e.Value?.ToString(), out var size) ? size : 25;
+        _page = 1;
+        await Load();
+    }
 
     private void Export() => JS.InvokeVoidAsync("capitrack.go", "/api/transactions/export/csv");
 
@@ -104,7 +197,7 @@
 
     private async Task DeleteTx(TransactionDto tx)
     {
-        if (!await JS.InvokeAsync<bool>("capitrack.confirm", "Delete this transaction?")) return;
+        if (!await Confirm.AskAsync("Delete transaction", $"Delete the {tx.Type} of {tx.Symbol}? This can't be undone.", "Delete", danger: true)) return;
         await Api.DeleteAsync<object>($"/api/transactions/{tx.Id}");
         Toast.Show("Transaction deleted", "success");
         await Load();

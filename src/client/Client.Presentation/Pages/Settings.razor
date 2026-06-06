@@ -8,6 +8,7 @@
 @inject TopBarState TopBar
 @inject ModalService Modal
 @inject ToastService Toast
+@inject ConfirmService Confirm
 @inject SettingsStore Prefs
 @inject IJSRuntime JS
 
@@ -122,6 +123,73 @@
                         <button class="btn btn-pri btn-sm" @onclick="SaveDbPath"><Icon Name="check" /> Save Path</button>
                         <button class="btn btn-ghost btn-sm" @onclick="RefreshPlatform"><Icon Name="refresh" /> Refresh Platform</button>
                     </div>
+
+                    <div style="height:1px;background:var(--border);margin:22px 0;"></div>
+
+                    <div style="font-weight:600;font-size:0.92rem;margin-bottom:4px;">Backup &amp; restore</div>
+                    <p class="sub" style="margin-bottom:14px;">Export a full JSON snapshot of your data (accounts, transactions, tags, goals, currency rates and daily wealth), or restore from a previous export.</p>
+
+                    <SettingsRow Title="Export data" Sub="Download everything as a single JSON backup file.">
+                        <button class="btn btn-pri btn-sm" @onclick="ExportData"><Icon Name="download" /> Export JSON</button>
+                    </SettingsRow>
+
+                    <div class="mt-4" style="border:1px solid var(--down);background:var(--down-soft);border-radius:var(--r-sm);padding:15px 16px;">
+                        <div class="flex gap-2" style="align-items:center;color:var(--down);font-weight:700;font-size:0.9rem;margin-bottom:8px;"><Icon Name="skull" Width="16" Height="16" /> Replace all data</div>
+                        <p class="sub" style="margin-bottom:13px;">Importing a backup <strong style="color:var(--text-2);">permanently replaces every account, transaction, tag, goal and currency rate</strong> with the contents of the file. This cannot be undone — export a backup first.</p>
+                        <div class="field" style="margin-bottom:12px;">
+                            <InputFile OnChange="OnBackupSelected" accept=".json,application/json" class="input" style="padding:9px 13px;height:auto;" />
+                        </div>
+                        @if (_backupFile is not null)
+                        {
+                            <p class="sub" style="margin-bottom:10px;"><Icon Name="info" Width="13" Height="13" /> Selected: <strong style="color:var(--text-2);">@_backupFile.Name</strong></p>
+                        }
+                        <button class="btn btn-danger btn-sm" @onclick="ImportData" disabled="@(_backupFile is null || _importBusy)">
+                            <Icon Name="upload" /> @(_importBusy ? "Replacing…" : "Import & replace all data")
+                        </button>
+                    </div>
+                </SettingsPanel>
+            }
+            else if (_panel == "providers")
+            {
+                <SettingsPanel IconName="trend" Title="Market Data">
+                    <p class="sub" style="margin-bottom:16px;line-height:1.6;">Capitrack fetches live and historical prices for your holdings from the provider below. Support for additional providers — each with its own API key and enable/disable switch — is on the way.</p>
+                    @if (_providers.Count == 0)
+                    {
+                        <div class="empty-state"><Icon Name="trend" /><p>No market-data providers configured.</p></div>
+                    }
+                    @foreach (var p in _providers)
+                    {
+                        <div class="card card-pad mt-3">
+                            <div class="flex gap-3" style="align-items:flex-start;">
+                                <div style="flex-shrink:0;width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:var(--pri-soft);color:var(--pri-2);"><Icon Name="trend" Width="20" Height="20" /></div>
+                                <div style="flex:1;min-width:0;">
+                                    <div class="flex gap-2" style="align-items:center;flex-wrap:wrap;">
+                                        <span style="font-weight:700;font-size:0.98rem;">@p.Name</span>
+                                        @if (p.IsDefault)
+                                        {
+                                            <span class="chip" style="color:var(--pri-2);background:var(--pri-soft);">Default</span>
+                                        }
+                                        @if (p.Enabled)
+                                        {
+                                            <span class="chip up"><Icon Name="check" Width="12" Height="12" /> Active</span>
+                                        }
+                                    </div>
+                                    <p class="sub" style="margin-top:6px;line-height:1.55;">@p.Description</p>
+                                    <div class="flex gap-4 mt-3" style="flex-wrap:wrap;align-items:center;">
+                                        <span class="sub"><Icon Name="lock" Width="13" Height="13" /> @(p.RequiresApiKey ? (p.ApiKeySet ? "API key configured" : "API key required") : "No API key required")</span>
+                                        @if (!string.IsNullOrEmpty(p.Website))
+                                        {
+                                            <a class="sub" style="color:var(--pri-2);" href="@p.Website" target="_blank" rel="noopener"><Icon Name="external" Width="13" Height="13" /> Provider site</a>
+                                        }
+                                    </div>
+                                </div>
+                                <button type="button" role="switch" aria-checked="@(p.Enabled ? "true" : "false")" disabled title="More providers and toggles are coming soon"
+                                        style="@($"flex-shrink:0;width:42px;height:24px;border-radius:99px;border:none;cursor:not-allowed;padding:0;position:relative;background:{(p.Enabled ? "var(--pri)" : "var(--surface-3)")};opacity:0.9;")">
+                                    <i style="@($"position:absolute;top:3px;left:{(p.Enabled ? "21px" : "3px")};width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.3);")"></i>
+                                </button>
+                            </div>
+                        </div>
+                    }
                 </SettingsPanel>
             }
             else if (_panel == "appearance")
@@ -179,7 +247,15 @@
                             <div class="sub">Version @_version · MIT License</div>
                         </div>
                         <p class="sub" style="max-width:380px;">Open-source, self-hosted wealth tracking for everyone. Your portfolio, your server, your data.</p>
-                        <a class="btn btn-ghost btn-sm" href="https://github.com/jeff-nasseri/Capitrack" target="_blank" rel="noopener"><Icon Name="external" /> View on GitHub</a>
+                        <div class="flex gap-2" style="flex-wrap:wrap;justify-content:center;">
+                            <a class="btn btn-ghost btn-sm" href="https://capitrack.dev" target="_blank" rel="noopener"><Icon Name="external" /> Website</a>
+                            <a class="btn btn-ghost btn-sm" href="https://capitrack.dev/docs/getting-started.html" target="_blank" rel="noopener"><Icon Name="info" /> Documentation</a>
+                            <a class="btn btn-ghost btn-sm" href="https://github.com/jeff-nasseri/Capitrack" target="_blank" rel="noopener"><Icon Name="external" /> GitHub</a>
+                        </div>
+                        <div class="flex gap-4" style="margin-top:6px;">
+                            <a class="sub" style="color:var(--pri-2);" href="https://capitrack.dev" target="_blank" rel="noopener">capitrack.dev</a>
+                            <a class="sub" style="color:var(--pri-2);" href="https://capitrack.dev/docs/getting-started.html" target="_blank" rel="noopener">capitrack.dev/docs</a>
+                        </div>
                     </div>
                 </SettingsPanel>
             }
@@ -203,6 +279,7 @@
     [
         ("accounts", "Accounts", "wallet"), ("goals", "Goals", "goals"), ("tags", "Tags", "tag"),
         ("currencies", "Currency Rates", "swap"), ("database", "Database", "database"),
+        ("providers", "Market Data", "trend"),
         ("appearance", "Appearance", "palette"), ("security", "Security", "lock"),
         ("about", "About", "info"), ("danger", "Danger Zone", "skull")
     ];
@@ -232,6 +309,9 @@
     private string _curPw = "", _newPw = "", _confirmPw = "";
     private string? _pwMsg;
     private bool _pwOk;
+    private List<MarketDataProviderDto> _providers = [];
+    private IBrowserFile? _backupFile;
+    private bool _importBusy;
 
     protected override async Task OnInitializedAsync()
     {
@@ -247,6 +327,7 @@
             _dbHealthy = db.Exists;
             _dbStatus = db.Exists ? "Database file exists and is accessible." : "Database file will be created at this location.";
         }
+        _providers = await Api.GetAsync<List<MarketDataProviderDto>>("/api/settings/providers") ?? [];
         await LoadAll();
     }
 
@@ -292,7 +373,7 @@
 
     private async Task DeleteAccount(int id)
     {
-        if (!await JS.InvokeAsync<bool>("capitrack.confirm", "Delete this account and all its transactions?")) return;
+        if (!await Confirm.AskAsync("Delete account", "This permanently deletes the account and all of its transactions.", "Delete", danger: true)) return;
         await Api.DeleteAsync<object>($"/api/accounts/{id}");
         Toast.Show("Account deleted", "success");
         await LoadAll();
@@ -321,7 +402,7 @@
 
     private async Task DeleteGoal(int id)
     {
-        if (!await JS.InvokeAsync<bool>("capitrack.confirm", "Delete this goal?")) return;
+        if (!await Confirm.AskAsync("Delete goal", "This goal will be permanently removed.", "Delete", danger: true)) return;
         await Api.DeleteAsync<object>($"/api/goals/{id}");
         Toast.Show("Goal deleted", "success");
         await LoadAll();
@@ -329,8 +410,7 @@
 
     private async Task RemoveAllGoals()
     {
-        if (!await JS.InvokeAsync<bool>("capitrack.confirm", "WARNING: This will permanently delete ALL goals. This action cannot be undone.\n\nAre you sure?")) return;
-        if (!await JS.InvokeAsync<bool>("capitrack.confirm", "Final confirmation: All goals will be permanently deleted.")) return;
+        if (!await Confirm.AskAsync("Remove all goals", "This permanently deletes ALL goals. This action cannot be undone.", "Delete all", danger: true)) return;
         await Api.DeleteAsync<object>("/api/goals");
         Toast.Show("All goals removed", "success");
         await LoadAll();
@@ -355,7 +435,7 @@
 
     private async Task DeleteTag(int id)
     {
-        if (!await JS.InvokeAsync<bool>("capitrack.confirm", "Delete this tag?")) return;
+        if (!await Confirm.AskAsync("Delete tag", "This tag will be removed from every item it's applied to.", "Delete", danger: true)) return;
         await Api.DeleteAsync<object>($"/api/tags/{id}");
         Toast.Show("Tag deleted", "success");
         await LoadAll();
@@ -380,7 +460,7 @@
 
     private async Task DeleteRate(int id)
     {
-        if (!await JS.InvokeAsync<bool>("capitrack.confirm", "Delete this rate?")) return;
+        if (!await Confirm.AskAsync("Delete currency rate", "This conversion rate will be permanently removed.", "Delete", danger: true)) return;
         await Api.DeleteAsync<object>($"/api/currencies/{id}");
         Toast.Show("Rate deleted", "success");
         await LoadAll();
@@ -421,16 +501,50 @@
 
     private async Task RefreshPlatform()
     {
-        if (!await JS.InvokeAsync<bool>("capitrack.confirm", "Refresh the platform with the current database?")) return;
+        if (!await Confirm.AskAsync("Refresh platform", "Reload the platform using the current database. The page will refresh.", "Refresh", danger: false, icon: "refresh")) return;
         await Api.PostAsync<object>("/api/settings/refresh", new { });
         await JS.InvokeVoidAsync("capitrack.reload");
+    }
+
+    // ---- Backup & restore ----
+    private void ExportData() => JS.InvokeVoidAsync("capitrack.go", "/api/settings/database/export");
+
+    private void OnBackupSelected(InputFileChangeEventArgs e) => _backupFile = e.File;
+
+    private async Task ImportData()
+    {
+        if (_backupFile is null) return;
+        if (!await Confirm.AskAsync("Replace all data",
+                $"This permanently replaces ALL of your data with the contents of \"{_backupFile.Name}\". This cannot be undone.",
+                "Replace everything", danger: true, icon: "skull")) return;
+
+        _importBusy = true;
+        try
+        {
+            using var content = new MultipartFormDataContent();
+            content.Add(new StreamContent(_backupFile.OpenReadStream(25 * 1024 * 1024)), "file", _backupFile.Name);
+            var (ok, json) = await Api.PostFormWithStatusAsync<JsonElement>("/api/settings/database/import", content);
+            if (ok)
+            {
+                var msg = json.ValueKind == JsonValueKind.Object && json.TryGetProperty("message", out var m) ? m.GetString() : null;
+                Toast.Show(msg ?? "Data replaced from backup", "success");
+                _backupFile = null;
+                await LoadAll();
+            }
+            else
+            {
+                var err = json.ValueKind == JsonValueKind.Object && json.TryGetProperty("error", out var er) ? er.GetString() : null;
+                Toast.Show(err ?? "Import failed — check the file and try again", "error");
+            }
+        }
+        catch { Toast.Show("Import failed — invalid or unreadable file", "error"); }
+        finally { _importBusy = false; }
     }
 
     // ---- Danger ----
     private async Task Purge()
     {
-        if (!await JS.InvokeAsync<bool>("capitrack.confirm", "WARNING: This will permanently delete ALL accounts, transactions, goals, and cached data. This action cannot be undone.\n\nAre you absolutely sure?")) return;
-        if (!await JS.InvokeAsync<bool>("capitrack.confirm", "Final confirmation: Type OK to proceed.\n\nAll data will be lost permanently.")) return;
+        if (!await Confirm.AskAsync("Purge all data", "This permanently deletes EVERY account, transaction, goal and cached price. This cannot be undone.", "Purge everything", danger: true, icon: "skull")) return;
         await Api.DeleteAsync<object>("/api/accounts/purge/all");
         State.Accounts = []; State.AllHoldings = []; State.DashboardSummary = null;
         Toast.Show("All data has been purged", "success");
