@@ -5,8 +5,11 @@ namespace Server.Application.Common.Interfaces;
 /// <summary>Persistence operations for <see cref="Transaction"/> aggregates and their tag links.</summary>
 public interface ITransactionRepository
 {
-    /// <summary>Returns transactions matching the optional account/symbol filters and paging.</summary>
-    Task<IReadOnlyList<Transaction>> ListAsync(int? accountId, string? symbol, int? limit, int? offset, CancellationToken ct = default);
+    /// <summary>Returns transactions matching the optional account/symbol/search/type filters and paging.</summary>
+    Task<IReadOnlyList<Transaction>> ListAsync(int? accountId, string? symbol, string? search, string? type, int? limit, int? offset, CancellationToken ct = default);
+
+    /// <summary>Counts all transactions matching the optional account/symbol/search/type filters, ignoring paging.</summary>
+    Task<int> CountAsync(int? accountId, string? symbol, string? search, string? type, CancellationToken ct = default);
 
     /// <summary>Returns all transactions for a single account.</summary>
     Task<IReadOnlyList<Transaction>> ForAccountAsync(int accountId, CancellationToken ct = default);
