@@ -1,3 +1,19 @@
+# =============================================================================
+# Build & publish the Capitrack images (api + web) to GHCR, versioned with
+# GitVersion — the same tool + GitVersion.yml that stamps the .NET assemblies,
+# so the image tags, the assembly SemVer and the git release stay in lock-step.
+#
+# Tagging strategy (every push to master):
+#   :X.Y.Z      e.g. :0.2.0   (majorMinorPatch — matches the vX.Y.Z git tag)
+#   :X.Y        e.g. :0.2      (floating minor)
+#   :latest                    (newest release)
+#   :sha-<short>               (exact commit, for traceability)
+#
+# A stable  vX.Y.Z  git tag + GitHub release is created by github-actions[bot]
+# so GitVersion treats it as the version source on the next run and increments
+# correctly on the next feat:/fix: commit. (Pre-release tags would lock the
+# version — that is why the assembly is stamped with majorMinorPatch only.)
+# =============================================================================
 name: Publish Images
 
 on:
@@ -5,8 +21,8 @@ on:
     branches: [master]
 
 permissions:
-  contents: read
-  packages: write
+  contents: write   # write: push the release git tag + create the GitHub release
+  packages: write   # write: push the images to GHCR
 
 jobs:
   publish:
@@ -14,6 +30,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history required for GitVersion
+
+      - name: Install GitVersion
+        uses: gittools/actions/gitversion/setup@v0.10.2
+        with:
+          versionSpec: '6.x'
+
+      - name: Determine Version
+        id: gitversion
+        uses: gittools/actions/gitversion/execute@v0.10.2
+        with:
+          useConfigFile: true
+
+      - name: Display resolved version
+        run: |
+          echo "majorMinorPatch: ${{ steps.gitversion.outputs.majorMinorPatch }}"
+          echo "assemblySemVer:  ${{ steps.gitversion.outputs.assemblySemVer }}"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -29,15 +63,38 @@ jobs:
         id: owner
         run: echo "name=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
 
+      # ---- API image ----
+      - name: API image metadata (tags, labels)
+        id: meta-api
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ steps.owner.outputs.name }}/capitrack-api
+          tags: |
+            type=raw,value=${{ steps.gitversion.outputs.majorMinorPatch }}
+            type=raw,value=${{ steps.gitversion.outputs.major }}.${{ steps.gitversion.outputs.minor }}
+            type=raw,value=latest
+            type=sha,format=short
+
       - name: Build & push API image
         uses: docker/build-push-action@v6
         with:
           context: .
           file: docker/api.Dockerfile
           push: true
+          tags: ${{ steps.meta-api.outputs.tags }}
+          labels: ${{ steps.meta-api.outputs.labels }}
+
+      # ---- Web image ----
+      - name: Web image metadata (tags, labels)
+        id: meta-web
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ steps.owner.outputs.name }}/capitrack-web
           tags: |
-            ghcr.io/${{ steps.owner.outputs.name }}/capitrack-api:latest
-            ghcr.io/${{ steps.owner.outputs.name }}/capitrack-api:${{ github.sha }}
+            type=raw,value=${{ steps.gitversion.outputs.majorMinorPatch }}
+            type=raw,value=${{ steps.gitversion.outputs.major }}.${{ steps.gitversion.outputs.minor }}
+            type=raw,value=latest
+            type=sha,format=short
 
       - name: Build & push Web image
         uses: docker/build-push-action@v6
@@ -45,6 +102,40 @@ jobs:
           context: .
           file: docker/web.Dockerfile
           push: true
-          tags: |
-            ghcr.io/${{ steps.owner.outputs.name }}/capitrack-web:latest
-            ghcr.io/${{ steps.owner.outputs.name }}/capitrack-web:${{ github.sha }}
+          tags: ${{ steps.meta-web.outputs.tags }}
+          labels: ${{ steps.meta-web.outputs.labels }}
+
+      # ---- Release: stable vX.Y.Z tag (GitVersion source) + GitHub release ----
+      - name: Create & push git tag
+        id: tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          TAG="v${{ steps.gitversion.outputs.majorMinorPatch }}"
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists — skipping tag + release."
+            echo "created=false" >> "$GITHUB_OUTPUT"
+          else
+            git tag -a "$TAG" -m "Release $TAG (assembly ${{ steps.gitversion.outputs.assemblySemVer }})"
+            git push origin "$TAG"
+            echo "created=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub release
+        if: steps.tag.outputs.created == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: Release ${{ steps.tag.outputs.tag }}
+          body: |
+            Automated release.
+
+            **Assembly version:** ${{ steps.gitversion.outputs.assemblySemVer }}
+            **Images:**
+            - `ghcr.io/${{ steps.owner.outputs.name }}/capitrack-api:${{ steps.gitversion.outputs.majorMinorPatch }}`
+            - `ghcr.io/${{ steps.owner.outputs.name }}/capitrack-web:${{ steps.gitversion.outputs.majorMinorPatch }}`
+
+            **Commit:** ${{ github.sha }}
+          draft: false
+          prerelease: false
