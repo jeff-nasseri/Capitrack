@@ -1,10 +1,8 @@
 namespace Client.Application.Models;
 
-/// <summary>A single buy/sell/transfer/dividend transaction within an account.</summary>
-public class TransactionDto
+/// <summary>A transaction the user chose to import from the "Check &amp; Import" preview (sent to /import/selected).</summary>
+public class SelectedTransactionDto
 {
-    public int Id { get; set; }
-    public int AccountId { get; set; }
     public string Symbol { get; set; } = "";
     public string Type { get; set; } = "buy";
     public double Quantity { get; set; }
@@ -14,7 +12,4 @@ public class TransactionDto
     public string Date { get; set; } = "";
     public string Notes { get; set; } = "";
     public bool IsStaked { get; set; }
-    public DateTime CreatedAt { get; set; }
-    public string? AccountName { get; set; }
-    public List<TagDto> Tags { get; set; } = [];
 }

@@ -24,6 +24,9 @@ public sealed class AccountType : ValueObject
 
     private static readonly IReadOnlyList<AccountType> Known = new[] { General, Stock, Crypto, Commodity, Cash };
 
+    /// <summary>True for cash-like accounts (cash / savings) that are valued at balance, never via a market quote.</summary>
+    public bool IsCash => Value is "cash" or "savings";
+
     /// <summary>Parses an account type, defaulting to <see cref="General"/> and accepting unknown values verbatim (lower-cased).</summary>
     public static AccountType From(string? value)
     {

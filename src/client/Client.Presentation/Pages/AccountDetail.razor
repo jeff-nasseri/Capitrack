@@ -8,36 +8,103 @@
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 
+@{
+    var isCash = _account?.Type is "savings" or "cash";
+}
+
 <div class="page page-wide">
     @* hero *@
     <div class="row-between" style="align-items:flex-start;">
         <div>
             <div class="eyebrow">@(_account?.Type) account</div>
-            <div class="bignum tnum" style="margin-top:6px;">@Format.Money(_totalValue, _base)</div>
-            <div class="flex gap-2 mt-2">
-                <span class="chip @(_gain >= 0 ? "up" : "down")">@Format.Signed(_gain, _base) · @Format.Pct(_gainPct)</span>
-                <span class="sub">all time</span>
-            </div>
+            @if (isCash)
+            {
+                <div class="bignum tnum" style="margin-top:6px;">@Format.Money(_cashBalance, _account?.Currency)</div>
+                <div class="flex gap-2 mt-2">
+                    <span class="chip pri">Cash balance</span>
+                    <span class="sub">@_account?.Currency</span>
+                </div>
+            }
+            else
+            {
+                <div class="bignum tnum" style="margin-top:6px;">@Format.Money(_totalValue, _base)</div>
+                <div class="flex gap-2 mt-2">
+                    <span class="chip @(_gain >= 0 ? "up" : "down")">@Format.Signed(_gain, _base) · @Format.Pct(_gainPct)</span>
+                    <span class="sub">all time</span>
+                </div>
+            }
         </div>
     </div>
 
     @* chart *@
     <div class="card mt-4" style="overflow:hidden;">
         <div style="padding:16px 12px;">
-            <PeriodChart Data="_chart" Labels="_labels" Currency="@_base" Height="230" Selected="@_period" SelectedChanged="OnPeriod" />
+            @if (isCash)
+            {
+                <AreaChart Data="_cashChart" Labels="_cashLabels" Currency="@_account?.Currency" Height="230" />
+            }
+            else
+            {
+                <PeriodChart Data="_chart" Labels="_labels" Currency="@_base" Height="230" Selected="@_period" SelectedChanged="OnPeriod" />
+            }
         </div>
     </div>
 
     @* KPI strip *@
-    <div class="grid mt-4" style="grid-template-columns:repeat(4, 1fr);">
-        <StatCard Label="Investments" Value="@Format.Money(_invested, _base)" />
-        <StatCard Label="Net contribution" Value="@Format.Money(_contribution, _base)" />
-        <StatCard Label="Cost basis" Value="@Format.Money(_totalCost, _base)" />
-        <StatCard Label="Cash balance" Value="@Format.Money(0, _base)" />
-    </div>
+    @if (isCash)
+    {
+        <div class="grid mt-4" style="grid-template-columns:repeat(3, 1fr);">
+            <StatCard Label="Balance" Value="@Format.Money(_cashBalance, _account?.Currency)" />
+            <StatCard Label="Total in" Value="@Format.Money(_cashIn, _account?.Currency)" />
+            <StatCard Label="Total out" Value="@Format.Money(_cashOut, _account?.Currency)" />
+        </div>
 
-    <div class="section-title mt-6" style="margin-bottom:12px;">Holdings</div>
-    <HoldingsTable Holdings="_holdings" AccountId="Id" />
+        <div class="section-title mt-6" style="margin-bottom:12px;">Cash movements</div>
+        <div class="card" style="overflow:hidden;">
+            <div style="overflow-x:auto;">
+                <table class="tbl">
+                    <thead>
+                        <tr>
+                            <th style="padding-top:16px;">Date</th>
+                            <th style="padding-top:16px;">Movement</th>
+                            <th class="r" style="padding-top:16px;">Amount</th>
+                            <th style="padding-top:16px;">Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (_cashMovements.Count == 0)
+                        {
+                            <tr><td colspan="4" class="sub" style="text-align:center;padding:28px;">No cash movements yet.</td></tr>
+                        }
+                        @foreach (var tx in _cashMovements)
+                        {
+                            var isIn = tx.Type is "transfer_in" or "buy";
+                            <tr>
+                                <td style="white-space:nowrap;">@Format.Date(tx.Date)</td>
+                                <td><span class="chip @(isIn ? "up" : "warn")">@(isIn ? "Deposit" : "Withdrawal")</span></td>
+                                <td class="r num" style="font-weight:650;color:@(isIn ? "var(--up)" : "var(--down)");">
+                                    @(isIn ? "+" : "−")@Format.Money(tx.Quantity * tx.Price, _account?.Currency)
+                                </td>
+                                <td class="sub">@tx.Notes</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="grid mt-4" style="grid-template-columns:repeat(4, 1fr);">
+            <StatCard Label="Investments" Value="@Format.Money(_invested, _base)" />
+            <StatCard Label="Net contribution" Value="@Format.Money(_contribution, _base)" />
+            <StatCard Label="Cost basis" Value="@Format.Money(_totalCost, _base)" />
+            <StatCard Label="Cash balance" Value="@Format.Money(0, _base)" />
+        </div>
+
+        <div class="section-title mt-6" style="margin-bottom:12px;">Holdings</div>
+        <HoldingsTable Holdings="_holdings" AccountId="Id" />
+    }
 </div>
 
 @code {
@@ -53,10 +120,25 @@
     private double _totalValue, _totalCost, _invested, _contribution, _gain, _gainPct;
     private List<TagDto> _tags = [];
 
+    // Cash-account state (computed client-side; no Yahoo / history calls).
+    private bool IsCash => _account?.Type is "savings" or "cash";
+    private List<TransactionDto> _cashMovements = [];
+    private List<double> _cashChart = [];
+    private List<string> _cashLabels = [];
+    private double _cashBalance, _cashIn, _cashOut;
+    private readonly CashFormModel _cash = new();
+
     private RenderFragment Actions => @<text>
         <button class="btn-icon" title="Import" @onclick="() => Modal.ShowImport()"><Icon Name="upload" /></button>
         <button class="btn-icon" title="Export" @onclick="Export"><Icon Name="download" /></button>
-        <button class="btn btn-pri btn-sm" @onclick="ShowAddTx"><Icon Name="plus" /> Transaction</button>
+        @if (IsCash)
+        {
+            <button class="btn btn-pri btn-sm" @onclick="ShowAddCash"><Icon Name="plus" /> Add cash</button>
+        }
+        else
+        {
+            <button class="btn btn-pri btn-sm" @onclick="ShowAddTx"><Icon Name="plus" /> Transaction</button>
+        }
     </text>;
 
     protected override void OnInitialized() => Modal.OnImported += OnImported;
@@ -87,6 +169,13 @@
         _base = (await sessionTask)?.BaseCurrency ?? _account.Currency;
 
         TopBar.Set(_account.Name, Actions, onBack: () => Nav.NavigateTo("/accounts"));
+
+        if (IsCash)
+        {
+            BuildCash();
+            StateHasChanged();
+            return;
+        }
 
         var symbols = holdings.Select(h => h.Symbol).ToList();
         var prices = symbols.Count > 0 ? await Api.PostAsync<Dictionary<string, QuoteDto>>("/api/prices/quotes", new { symbols }) ?? [] : [];
@@ -127,6 +216,40 @@
         await LoadChart(_period);
     }
 
+    // Builds the cash balance, totals, movement list and running-balance chart entirely client-side
+    // from the account's transactions (deposits = transfer_in/buy, withdrawals = transfer_out/sell).
+    private void BuildCash()
+    {
+        static double Signed(TransactionDto t) =>
+            t.Type is "transfer_in" or "buy" ? t.Quantity * t.Price
+            : t.Type is "transfer_out" or "sell" ? -(t.Quantity * t.Price)
+            : 0;
+
+        _cashMovements = _transactions
+            .OrderByDescending(t => t.Date)
+            .ThenByDescending(t => t.Id)
+            .ToList();
+
+        _cashIn = _transactions.Where(t => t.Type is "transfer_in" or "buy").Sum(t => t.Quantity * t.Price);
+        _cashOut = _transactions.Where(t => t.Type is "transfer_out" or "sell").Sum(t => t.Quantity * t.Price);
+        _cashBalance = _cashIn - _cashOut;
+
+        var chrono = _transactions.OrderBy(t => t.Date).ThenBy(t => t.Id).ToList();
+        var running = 0d;
+        _cashChart = [];
+        _cashLabels = [];
+        var dates = new List<string>();
+        foreach (var t in chrono)
+        {
+            running += Signed(t);
+            _cashChart.Add(running);
+            dates.Add(t.Date);
+        }
+        // The area chart needs at least two points to render a line.
+        if (_cashChart.Count == 1) { _cashChart.Insert(0, 0); dates.Insert(0, chrono[0].Date); }
+        _cashLabels = BuildLabels(dates);
+    }
+
     private async Task LoadChart(string period)
     {
         _period = period;
@@ -152,10 +275,55 @@
         await Api.PostAsync<TransactionDto>("/api/transactions", new
         {
             account_id = Id, symbol = m.Symbol, type = m.Type, date = m.Date, quantity = m.Quantity ?? 0,
-            price = m.Price ?? 0, fee = m.Fee, currency = m.Currency, notes = m.Notes, tag_ids = m.TagIds.ToList()
+            price = m.Price ?? 0, fee = m.Fee, currency = m.Currency, notes = m.Notes, is_staked = m.IsStaked, tag_ids = m.TagIds.ToList()
         });
         Modal.Close();
         Toast.Show("Transaction added", "success");
+        await Reload();
+    }
+
+    private void ShowAddCash()
+    {
+        _cash.Reset(_account?.Currency ?? "EUR");
+        Modal.Show("Add cash", CashFormFragment);
+    }
+
+    private RenderFragment CashFormFragment => @<form @onsubmit="SaveCash" @onsubmit:preventDefault>
+        <div class="form-row">
+            <div class="field"><label>Amount</label><input class="input" type="number" step="any" min="0" @bind="_cash.Amount" required /></div>
+            <div class="field">
+                <label>Direction</label>
+                <select class="input" @bind="_cash.Direction">
+                    <option value="Deposit">Deposit</option>
+                    <option value="Withdrawal">Withdrawal</option>
+                </select>
+            </div>
+        </div>
+        <div class="field">
+            <label>Date</label>
+            <input class="input" type="date" value="@_cash.Date" @onchange="e => _cash.Date = e.Value?.ToString() ?? string.Empty" required />
+        </div>
+        <div class="field"><label>Notes</label><input class="input" type="text" @bind="_cash.Notes" /></div>
+        <button type="submit" class="btn btn-pri btn-block"><Icon Name="check" /> Save</button>
+    </form>;
+
+    private async Task SaveCash()
+    {
+        var currency = _account?.Currency ?? "EUR";
+        await Api.PostAsync<TransactionDto>("/api/transactions", new
+        {
+            account_id = Id,
+            symbol = currency,
+            type = _cash.Direction == "Deposit" ? "transfer_in" : "transfer_out",
+            quantity = _cash.Amount ?? 0,
+            price = 1,
+            fee = 0,
+            currency,
+            date = _cash.Date,
+            notes = _cash.Notes
+        });
+        Modal.Close();
+        Toast.Show("Cash movement added", "success");
         await Reload();
     }
 
@@ -175,4 +343,21 @@
     }
 
     public void Dispose() => Modal.OnImported -= OnImported;
+
+    // Small model backing the inline "Add cash" form.
+    private sealed class CashFormModel
+    {
+        public double? Amount { get; set; }
+        public string Direction { get; set; } = "Deposit";
+        public string Date { get; set; } = DateTime.UtcNow.ToString("yyyy-MM-dd");
+        public string Notes { get; set; } = "";
+
+        public void Reset(string currency)
+        {
+            Amount = null;
+            Direction = "Deposit";
+            Date = DateTime.UtcNow.ToString("yyyy-MM-dd");
+            Notes = "";
+        }
+    }
 }

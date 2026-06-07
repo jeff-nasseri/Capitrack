@@ -257,7 +257,7 @@
         await Api.PostAsync<TransactionDto>("/api/transactions", new
         {
             account_id = AccountId, symbol = m.Symbol, type = m.Type, date = m.Date, quantity = m.Quantity ?? 0,
-            price = m.Price ?? 0, fee = m.Fee, currency = m.Currency, notes = m.Notes, tag_ids = m.TagIds.ToList()
+            price = m.Price ?? 0, fee = m.Fee, currency = m.Currency, notes = m.Notes, is_staked = m.IsStaked, tag_ids = m.TagIds.ToList()
         });
         Modal.Close();
         Toast.Show("Transaction added", "success");
@@ -272,7 +272,7 @@
         {
             Id = tx.Id, Symbol = tx.Symbol, Type = tx.Type, Date = tx.Date.Split('T')[0],
             Quantity = tx.Quantity, Price = tx.Price, Fee = tx.Fee, Currency = tx.Currency, Notes = tx.Notes,
-            TagIds = tx.Tags.Select(t => t.Id).ToHashSet()
+            IsStaked = tx.IsStaked, TagIds = tx.Tags.Select(t => t.Id).ToHashSet()
         };
         Modal.Show("Edit Transaction", @<TransactionForm Model="model" Tags="_tags" OnSave="() => SaveEdit(tx.Id, model)" />);
     }
@@ -282,7 +282,7 @@
         await Api.PutAsync<TransactionDto>($"/api/transactions/{id}", new
         {
             symbol = m.Symbol, type = m.Type, date = m.Date, quantity = m.Quantity ?? 0,
-            price = m.Price ?? 0, fee = m.Fee, currency = m.Currency, notes = m.Notes, tag_ids = m.TagIds.ToList()
+            price = m.Price ?? 0, fee = m.Fee, currency = m.Currency, notes = m.Notes, is_staked = m.IsStaked, tag_ids = m.TagIds.ToList()
         });
         Modal.Close();
         Toast.Show("Transaction updated", "success");

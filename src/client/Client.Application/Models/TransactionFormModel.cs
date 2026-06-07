@@ -12,5 +12,6 @@ public class TransactionFormModel
     public double Fee { get; set; }
     public string Currency { get; set; } = "EUR";
     public string Notes { get; set; } = "";
+    public bool IsStaked { get; set; }
     public HashSet<int> TagIds { get; set; } = [];
 }

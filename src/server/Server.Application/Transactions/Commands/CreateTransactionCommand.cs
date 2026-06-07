@@ -14,10 +14,11 @@ namespace Server.Application.Transactions.Commands;
 /// <param name="Currency">The transaction currency code.</param>
 /// <param name="Date">The trade date (required, yyyy-MM-dd).</param>
 /// <param name="Notes">Free-text notes.</param>
+/// <param name="IsStaked">Whether this transaction represents staked crypto.</param>
 /// <param name="TagIds">The ids of tags to attach.</param>
 public record CreateTransactionCommand(
     int? AccountId, string? Symbol, string? Type, double? Quantity, double? Price,
-    double? Fee, string? Currency, string? Date, string? Notes, List<int>? TagIds)
+    double? Fee, string? Currency, string? Date, string? Notes, bool? IsStaked, List<int>? TagIds)
     : IRequest<TransactionDto>;
 
 /// <summary>Validates <see cref="CreateTransactionCommand"/>.</summary>
@@ -60,7 +61,8 @@ public sealed class CreateTransactionHandler(
             request.Fee ?? 0,
             CurrencyCode.CreateOrDefault(request.Currency, CurrencyCode.Eur),
             TradeDate.Create(request.Date),
-            request.Notes);
+            request.Notes,
+            request.IsStaked ?? false);
 
         await transactions.AddAsync(tx, cancellationToken);
         await uow.SaveChangesAsync(cancellationToken);

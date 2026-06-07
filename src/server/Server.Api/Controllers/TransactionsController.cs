@@ -80,4 +80,53 @@ public sealed class TransactionsController(IMediator mediator) : ControllerBase
         var content = await reader.ReadToEndAsync();
         return Ok(await mediator.Send(new DetectCsvQuery(content)));
     }
+
+    /// <summary>Imports several CSV files into one account in a single call (aggregate result, dedup across files).</summary>
+    [HttpPost("import/csv/bulk")]
+    public async Task<IActionResult> ImportBulk(
+        [FromForm] IFormFileCollection files,
+        [FromForm(Name = "account_id")] int accountId,
+        [FromForm] string? format)
+    {
+        if (files is null || files.Count == 0) return BadRequest(new { error = "No files uploaded" });
+
+        int imported = 0, skipped = 0, total = 0;
+        var errors = new List<string>();
+        foreach (var file in files)
+        {
+            if (file.Length == 0) continue;
+            using var reader = new StreamReader(file.OpenReadStream());
+            var content = await reader.ReadToEndAsync();
+            var r = await mediator.Send(new ImportTransactionsCsvCommand(content, accountId, format));
+            imported += r.Imported;
+            skipped += r.Skipped;
+            total += r.Total;
+            if (r.Errors is { Count: > 0 }) errors.AddRange(r.Errors.Select(e => $"{file.FileName}: {e}"));
+        }
+        return Ok(new ImportResultDto(imported, skipped, total, errors, "bulk"));
+    }
+
+    /// <summary>Parses one or more CSV files WITHOUT importing, returning each file's rows (with duplicate + stake flags) for review.</summary>
+    [HttpPost("import/preview")]
+    public async Task<IActionResult> ImportPreview(
+        [FromForm] IFormFileCollection files,
+        [FromForm(Name = "account_id")] int accountId)
+    {
+        if (files is null || files.Count == 0) return BadRequest(new { error = "No files uploaded" });
+
+        var result = new List<PreviewFileDto>();
+        foreach (var file in files)
+        {
+            if (file.Length == 0) continue;
+            using var reader = new StreamReader(file.OpenReadStream());
+            var content = await reader.ReadToEndAsync();
+            result.Add(await mediator.Send(new PreviewImportCommand(file.FileName, content, accountId)));
+        }
+        return Ok(result);
+    }
+
+    /// <summary>Imports only the transactions the user selected in the Check &amp; Import preview (with per-row stake flags).</summary>
+    [HttpPost("import/selected")]
+    public async Task<IActionResult> ImportSelected([FromBody] ImportSelectedCommand command) =>
+        Ok(await mediator.Send(command));
 }

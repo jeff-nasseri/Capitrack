@@ -54,6 +54,7 @@ public class CapitrackDbContext(DbContextOptions<CapitrackDbContext> options) : 
             e.Property(x => x.Quantity).HasConversion(v => v.Value, v => Quantity.Create(v));
             e.Property(x => x.Currency).HasConversion(v => v.Value, v => CurrencyCode.Create(v));
             e.Property(x => x.Date).HasConversion(v => v.Value, v => TradeDate.Create(v));
+            e.Property(x => x.IsStaked).HasDefaultValue(false);
             e.Property(x => x.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP").ValueGeneratedOnAdd();
             e.HasIndex(x => x.AccountId);
             e.HasIndex(x => x.Symbol);
