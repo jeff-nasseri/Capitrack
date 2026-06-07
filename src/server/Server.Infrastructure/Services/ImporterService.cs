@@ -77,11 +77,13 @@ public sealed partial class ImporterService(CapitrackDbContext db) : IImporterSe
         return set;
     }
 
-    // ---- Main import ----
-    public async Task<ImportResultDto> ImportAsync(string content, int accountId, string? formatHint)
+    private static readonly string[] KnownFormats = ["revolut-stocks", "revolut-commodities", "trezor", "generic"];
+
+    // ---- Shared parse (format detection + parser dispatch) ----
+    private static (string Format, List<ImportedTransaction> Parsed, List<string> Headers) ParseContent(string content, string? formatHint)
     {
         var (records, headers) = ParseCsv(content);
-        if (records.Count == 0) return new ImportResultDto(0, 0, 0, [], "unknown");
+        if (records.Count == 0) return ("unknown", [], headers);
 
         var format = !string.IsNullOrEmpty(formatHint) ? formatHint : DetectFormat(headers);
         List<ImportedTransaction> parsed = format switch
@@ -92,7 +94,17 @@ public sealed partial class ImporterService(CapitrackDbContext db) : IImporterSe
             "generic" => ParseGeneric(records),
             _ => []
         };
-        if (format is not ("revolut-stocks" or "revolut-commodities" or "trezor" or "generic"))
+        return (format, parsed, headers);
+    }
+
+    // ---- Main import ----
+    public async Task<ImportResultDto> ImportAsync(string content, int accountId, string? formatHint)
+    {
+        var (records, _) = ParseCsv(content);
+        if (records.Count == 0) return new ImportResultDto(0, 0, 0, [], "unknown");
+
+        var (format, parsed, headers) = ParseContent(content, formatHint);
+        if (!KnownFormats.Contains(format))
             return new ImportResultDto(0, 0, records.Count, [$"Unknown CSV format. Headers: {string.Join(", ", headers)}"], "unknown");
 
         var existing = await ExistingFingerprintsAsync(accountId);
@@ -122,6 +134,64 @@ public sealed partial class ImporterService(CapitrackDbContext db) : IImporterSe
         }
         await db.SaveChangesAsync();
         return new ImportResultDto(imported, skipped, parsed.Count, errors, format);
+    }
+
+    // ---- Preview (parse only, no insert) ----
+    public async Task<PreviewFileDto> PreviewAsync(string fileName, string content, int accountId)
+    {
+        var (format, parsed, _) = ParseContent(content, null);
+        var existing = await ExistingFingerprintsAsync(accountId);
+
+        var account = await db.Accounts.FindAsync(accountId);
+        bool accountIsCrypto = account?.Type.Value is "crypto";
+
+        var rows = new List<PreviewTransactionDto>(parsed.Count);
+        for (var i = 0; i < parsed.Count; i++)
+        {
+            var tx = parsed[i];
+            var fp = Fingerprint(accountId, tx.Symbol, tx.Type, tx.Quantity, tx.Price, tx.Date);
+            bool symbolIsCrypto = tx.Symbol.EndsWith("-USD", StringComparison.OrdinalIgnoreCase);
+            bool canStake = tx.Type == "transfer_out" && (symbolIsCrypto || accountIsCrypto);
+
+            rows.Add(new PreviewTransactionDto(
+                i, tx.Symbol, tx.Type, tx.Quantity, tx.Price, tx.Fee,
+                tx.Currency, tx.Date, tx.Notes, existing.Contains(fp), canStake));
+        }
+        return new PreviewFileDto(fileName, format, rows);
+    }
+
+    // ---- Import a user-selected set (no CSV parsing) ----
+    public async Task<ImportResultDto> ImportSelectedAsync(int accountId, IEnumerable<SelectedTransactionDto> transactions)
+    {
+        var list = transactions as IReadOnlyList<SelectedTransactionDto> ?? transactions.ToList();
+        var existing = await ExistingFingerprintsAsync(accountId);
+        int imported = 0, skipped = 0;
+        var errors = new List<string>();
+        for (var i = 0; i < list.Count; i++)
+        {
+            var tx = list[i];
+            try
+            {
+                var fp = Fingerprint(accountId, tx.Symbol, tx.Type, tx.Quantity, tx.Price, tx.Date);
+                if (existing.Contains(fp)) { skipped++; continue; }
+                db.Transactions.Add(Transaction.Create(
+                    accountId,
+                    Symbol.Create(tx.Symbol),
+                    TransactionType.From(tx.Type),
+                    Quantity.Create(tx.Quantity),
+                    tx.Price,
+                    tx.Fee,
+                    CurrencyCode.Create(tx.Currency),
+                    TradeDate.Create(tx.Date),
+                    tx.Notes,
+                    isStaked: tx.IsStaked));
+                existing.Add(fp);
+                imported++;
+            }
+            catch (Exception e) { errors.Add($"Row {i + 1}: {e.Message}"); }
+        }
+        await db.SaveChangesAsync();
+        return new ImportResultDto(imported, skipped, list.Count, errors, "selected");
     }
 
     // ---- Parsers ----

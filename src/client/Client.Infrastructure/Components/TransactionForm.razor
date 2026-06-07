@@ -32,6 +32,10 @@
         </div>
     </div>
     <div class="field"><label>Notes</label><input class="input" type="text" @bind="Model.Notes" /></div>
+    <label class="tag-checkbox" style="align-self:flex-start;">
+        <input type="checkbox" checked="@Model.IsStaked" @onchange="e => Model.IsStaked = (bool)(e.Value ?? false)" />
+        <span>Staked (counts toward wealth even though sent out)</span>
+    </label>
     @if (Tags.Count > 0)
     {
         <div class="field">

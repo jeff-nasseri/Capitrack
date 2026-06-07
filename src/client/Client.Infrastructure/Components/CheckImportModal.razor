@@ -1,0 +1,227 @@
+@namespace Client.Infrastructure.Components
+@implements IDisposable
+@inject ModalService Modal
+@inject ApiClient Api
+@inject AppState State
+@inject ToastService Toast
+
+@if (Modal.CheckImportVisible)
+{
+    <div class="modal-overlay" @onclick="Close">
+        <div class="modal" style="max-width:820px;width:94vw;" @onclick:stopPropagation="true">
+            <div class="modal-header">
+                <h3>Check &amp; Import</h3>
+                <button class="btn-icon" @onclick="Close"><Icon Name="x" /></button>
+            </div>
+            <div class="modal-body" style="max-height:80vh;overflow:auto;">
+                @if (_loading)
+                {
+                    <div class="loading-spinner">Parsing file(s)…</div>
+                }
+                else if (_result is not null)
+                {
+                    <div class="success-message"><strong>Import complete.</strong> @($"Imported {_result.Imported} · Skipped {_result.Skipped} · Total {_result.Total}")</div>
+                    <button class="btn btn-pri btn-block mt-4" @onclick="Close">Done</button>
+                }
+                else if (_files.Count == 0)
+                {
+                    <div class="empty-state"><Icon Name="info" /><p>No transactions were found in the selected file(s).</p></div>
+                }
+                else
+                {
+                    @* one tab per file *@
+                    @if (_files.Count > 1)
+                    {
+                        <div class="flex gap-1" style="border-bottom:1px solid var(--border);margin-bottom:12px;flex-wrap:wrap;">
+                            @for (var i = 0; i < _files.Count; i++)
+                            {
+                                var idx = i;
+                                var f = _files[idx];
+                                <button class="btn btn-sm @(_activeTab == idx ? "btn-pri" : "btn-ghost")" @onclick="() => _activeTab = idx">
+                                    @ShortName(f.FileName) <span style="opacity:0.75;">(@f.Rows.Count(r => r.Selected)/@f.Rows.Count)</span>
+                                </button>
+                            }
+                        </div>
+                    }
+
+                    var active = _files[Math.Min(_activeTab, _files.Count - 1)];
+                    <div class="flex row-between" style="margin-bottom:10px;align-items:center;flex-wrap:wrap;gap:8px;">
+                        <span class="chip pri">@FormatName(active.Format)</span>
+                        <label class="flex gap-2" style="align-items:center;font-size:0.85rem;cursor:pointer;">
+                            <input type="checkbox" checked="@active.Rows.All(r => r.Selected)" @onchange="e => ToggleAll(active, (bool)(e.Value ?? false))" />
+                            <span class="sub">Select all · @active.Rows.Count(r => r.Selected)/@active.Rows.Count</span>
+                        </label>
+                    </div>
+
+                    <div style="overflow-x:auto;">
+                        <table class="tbl" style="width:100%;font-size:0.84rem;">
+                            <thead>
+                                <tr>
+                                    <th style="width:30px;"></th>
+                                    <th>Date</th><th>Type</th><th>Symbol</th>
+                                    <th class="r">Qty</th><th class="r">Price</th><th>Flags</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var row in active.Rows)
+                                {
+                                    <tr style="@(row.Tx.IsDuplicate ? "opacity:0.55;" : "")">
+                                        <td><input type="checkbox" checked="@row.Selected" @onchange="e => row.Selected = (bool)(e.Value ?? false)" /></td>
+                                        <td style="white-space:nowrap;">@row.Tx.Date</td>
+                                        <td><TxnBadge Type="@row.Tx.Type" /></td>
+                                        <td class="num">@row.Tx.Symbol</td>
+                                        <td class="r num">@Format.Shares(row.Tx.Quantity)</td>
+                                        <td class="r num">@Format.Money(row.Tx.Price, row.Tx.Currency)</td>
+                                        <td>
+                                            <div class="flex gap-2" style="align-items:center;">
+                                                @if (row.Tx.CanStake)
+                                                {
+                                                    <label class="flex gap-1" style="align-items:center;cursor:pointer;" title="Count as staked (still part of wealth even though sent out)">
+                                                        <input type="checkbox" checked="@row.Staked" @onchange="e => row.Staked = (bool)(e.Value ?? false)" />
+                                                        <span class="sub">stake</span>
+                                                    </label>
+                                                }
+                                                @if (row.Tx.IsDuplicate)
+                                                {
+                                                    <span class="chip" style="font-size:0.68rem;color:var(--text-3);">duplicate</span>
+                                                }
+                                            </div>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="flex gap-2 mt-4" style="justify-content:flex-end;align-items:center;">
+                        <span class="sub" style="margin-right:auto;">@SelectedCount selected across @_files.Count file@(_files.Count == 1 ? "" : "s")</span>
+                        <button class="btn btn-ghost btn-sm" @onclick="Close">Cancel</button>
+                        <button class="btn btn-pri btn-sm" @onclick="DoImport" disabled="@(_busy || SelectedCount == 0)">
+                            <Icon Name="upload" /> @(_busy ? "Importing…" : $"Import {SelectedCount} selected")
+                        </button>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool _loading;
+    private bool _busy;
+    private int _activeTab;
+    private ImportResultDto? _result;
+    private List<FileVM> _files = [];
+    private IReadOnlyList<IBrowserFile>? _loadedFor;
+
+    private int SelectedCount => _files.Sum(f => f.Rows.Count(r => r.Selected));
+
+    private sealed class FileVM
+    {
+        public string FileName = "";
+        public string Format = "";
+        public List<RowVM> Rows = [];
+    }
+
+    private sealed class RowVM
+    {
+        public required PreviewTransactionDto Tx;
+        public bool Selected;
+        public bool Staked;
+    }
+
+    protected override void OnInitialized() => Modal.OnChange += OnModalChange;
+
+    private void OnModalChange() => InvokeAsync(async () =>
+    {
+        if (Modal.CheckImportVisible && !ReferenceEquals(_loadedFor, Modal.CheckImportFiles))
+        {
+            _loadedFor = Modal.CheckImportFiles;
+            await LoadPreview();
+        }
+        else if (!Modal.CheckImportVisible && _loadedFor is not null)
+        {
+            Reset();
+        }
+        StateHasChanged();
+    });
+
+    private async Task LoadPreview()
+    {
+        _loading = true; _result = null; _activeTab = 0; _files = [];
+        StateHasChanged();
+        try
+        {
+            var files = Modal.CheckImportFiles;
+            if (files is null || files.Count == 0 || State.CurrentAccountId is null) return;
+
+            using var content = new MultipartFormDataContent();
+            foreach (var f in files)
+                content.Add(new StreamContent(f.OpenReadStream(15 * 1024 * 1024)), "files", f.Name);
+            content.Add(new StringContent(State.CurrentAccountId.Value.ToString()), "account_id");
+
+            var preview = await Api.PostFormAsync<List<PreviewFileDto>>("/api/transactions/import/preview", content) ?? [];
+            _files = preview.Select(p => new FileVM
+            {
+                FileName = p.FileName,
+                Format = p.Format,
+                Rows = p.Transactions.Select(t => new RowVM { Tx = t, Selected = !t.IsDuplicate, Staked = false }).ToList()
+            }).ToList();
+        }
+        catch { Toast.Show("Could not parse the selected file(s)", "error"); }
+        finally { _loading = false; StateHasChanged(); }
+    }
+
+    private static void ToggleAll(FileVM f, bool on)
+    {
+        foreach (var r in f.Rows) r.Selected = on;
+    }
+
+    private async Task DoImport()
+    {
+        if (State.CurrentAccountId is null || SelectedCount == 0) return;
+        _busy = true;
+        try
+        {
+            var selected = _files.SelectMany(f => f.Rows).Where(r => r.Selected).Select(r => new SelectedTransactionDto
+            {
+                Symbol = r.Tx.Symbol, Type = r.Tx.Type, Quantity = r.Tx.Quantity, Price = r.Tx.Price,
+                Fee = r.Tx.Fee, Currency = r.Tx.Currency, Date = r.Tx.Date, Notes = r.Tx.Notes, IsStaked = r.Staked
+            }).ToList();
+
+            var body = new { account_id = State.CurrentAccountId.Value, transactions = selected };
+            _result = await Api.PostAsync<ImportResultDto>("/api/transactions/import/selected", body);
+            if (_result is not null && _result.Error is null)
+            {
+                Modal.RaiseImported();
+                Toast.Show($"Imported {_result.Imported} transaction(s)", "success");
+            }
+        }
+        catch { Toast.Show("Import failed", "error"); }
+        finally { _busy = false; StateHasChanged(); }
+    }
+
+    private void Reset()
+    {
+        _files = []; _result = null; _activeTab = 0; _loadedFor = null; _loading = false; _busy = false;
+    }
+
+    private void Close()
+    {
+        Reset();
+        Modal.CloseCheckImport();
+    }
+
+    private static string ShortName(string name) => name.Length > 24 ? name[..22] + "…" : name;
+
+    private static string FormatName(string fmt) => fmt switch
+    {
+        "revolut-stocks" => "Revolut Stocks",
+        "revolut-commodities" => "Revolut Commodities",
+        "trezor" => "Trezor",
+        "generic" => "Generic CSV",
+        _ => "Unknown format"
+    };
+
+    public void Dispose() => Modal.OnChange -= OnModalChange;
+}

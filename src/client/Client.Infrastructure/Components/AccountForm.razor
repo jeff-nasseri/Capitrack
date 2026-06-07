@@ -12,6 +12,10 @@
         </div>
         <div class="field"><label>Currency</label><input class="input" type="text" @bind="Model.Currency" maxlength="5" /></div>
     </div>
+    @if (Model.Type is "savings")
+    {
+        <p class="sub" style="margin-top:-6px;">Plain cash in one currency — no symbols or market prices.</p>
+    }
     <div class="form-row">
         <div class="field">
             <label>Icon</label>

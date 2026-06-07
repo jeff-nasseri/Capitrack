@@ -17,7 +17,7 @@ public static class HoldingsCalculator
         foreach (var g in transactions.GroupBy(t => t.Symbol))
         {
             double buyQty = g.Where(t => t.Type.IncreasesQuantity).Sum(t => t.Quantity.Value);
-            double sellQty = g.Where(t => t.Type.DecreasesQuantity).Sum(t => t.Quantity.Value);
+            double sellQty = g.Where(t => t.Type.DecreasesQuantity && !t.IsStaked).Sum(t => t.Quantity.Value);
             double quantity = buyQty - sellQty;
             if (quantity <= Epsilon) continue;
 
@@ -44,7 +44,7 @@ public static class HoldingsCalculator
         foreach (var g in transactions.GroupBy(t => new { t.Symbol, t.AccountId }))
         {
             double buyQty = g.Where(t => t.Type.IncreasesQuantity).Sum(t => t.Quantity.Value);
-            double sellQty = g.Where(t => t.Type.DecreasesQuantity).Sum(t => t.Quantity.Value);
+            double sellQty = g.Where(t => t.Type.DecreasesQuantity && !t.IsStaked).Sum(t => t.Quantity.Value);
             double quantity = buyQty - sellQty;
             if (quantity <= Epsilon) continue;
 

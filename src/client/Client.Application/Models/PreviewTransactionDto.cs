@@ -1,10 +1,9 @@
 namespace Client.Application.Models;
 
-/// <summary>A single buy/sell/transfer/dividend transaction within an account.</summary>
-public class TransactionDto
+/// <summary>A single parsed-but-not-yet-imported transaction row shown in the "Check &amp; Import" preview.</summary>
+public class PreviewTransactionDto
 {
-    public int Id { get; set; }
-    public int AccountId { get; set; }
+    public int Index { get; set; }
     public string Symbol { get; set; } = "";
     public string Type { get; set; } = "buy";
     public double Quantity { get; set; }
@@ -13,8 +12,6 @@ public class TransactionDto
     public string Currency { get; set; } = "EUR";
     public string Date { get; set; } = "";
     public string Notes { get; set; } = "";
-    public bool IsStaked { get; set; }
-    public DateTime CreatedAt { get; set; }
-    public string? AccountName { get; set; }
-    public List<TagDto> Tags { get; set; } = [];
+    public bool IsDuplicate { get; set; }
+    public bool CanStake { get; set; }
 }

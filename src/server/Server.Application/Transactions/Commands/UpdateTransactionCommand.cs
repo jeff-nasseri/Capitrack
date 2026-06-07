@@ -13,10 +13,11 @@ namespace Server.Application.Transactions.Commands;
 /// <param name="Currency">The new currency code, or null to keep the current value.</param>
 /// <param name="Date">The new trade date, or null to keep the current value.</param>
 /// <param name="Notes">The new notes, or null to keep the current value.</param>
+/// <param name="IsStaked">The new staked flag, or null to keep the current value.</param>
 /// <param name="TagIds">The ids of tags to attach.</param>
 public record UpdateTransactionCommand(
     int Id, string? Symbol, string? Type, double? Quantity, double? Price,
-    double? Fee, string? Currency, string? Date, string? Notes, List<int>? TagIds)
+    double? Fee, string? Currency, string? Date, string? Notes, bool? IsStaked, List<int>? TagIds)
     : IRequest<TransactionDto>;
 
 /// <summary>Handles <see cref="UpdateTransactionCommand"/>.</summary>
@@ -45,6 +46,7 @@ public sealed class UpdateTransactionHandler(
         var currency = request.Currency ?? t.Currency.Value;
         var date = request.Date ?? t.Date.Value;
         var notes = request.Notes ?? t.Notes;
+        var isStaked = request.IsStaked ?? t.IsStaked;
 
         t.Update(
             Symbol.Create(symbol),
@@ -54,7 +56,8 @@ public sealed class UpdateTransactionHandler(
             fee,
             CurrencyCode.Create(currency),
             TradeDate.Create(date),
-            notes);
+            notes,
+            isStaked);
 
         await uow.SaveChangesAsync(cancellationToken);
 

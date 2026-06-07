@@ -15,21 +15,27 @@
             <div class="modal-body">
                 <p class="sub" style="line-height:1.6;margin-bottom:14px;">
                     <strong style="color:var(--text-2);">Supported formats:</strong> Revolut Stocks, Revolut Commodities, Trezor, or generic CSV.
-                    The format is auto-detected and duplicate rows are skipped.
+                    Select one or more files — the format is auto-detected and duplicate rows are skipped.
                 </p>
                 <div class="field">
-                    <label>CSV file</label>
-                    <InputFile OnChange="OnFileSelected" accept=".csv" class="input" style="padding:9px 13px;height:auto;" />
+                    <label>CSV file(s)</label>
+                    <InputFile OnChange="OnFilesSelected" accept=".csv" multiple class="input" style="padding:9px 13px;height:auto;" />
                 </div>
-                @if (_formatName is not null)
+                @if (_files.Count > 0)
                 {
                     <div class="mt-2" style="margin-bottom:14px;">
-                        <span class="chip @(_isKnown ? "up" : "warn")"><Icon Name="@(_isKnown ? "check" : "info")" Width="13" Height="13" /> @_formatName</span>
+                        <span class="chip up"><Icon Name="check" Width="13" Height="13" /> @_files.Count file@(_files.Count == 1 ? "" : "s") selected</span>
                     </div>
                 }
-                <button class="btn btn-pri btn-block mt-2" @onclick="DoImport" disabled="@(_file is null || _busy)">
-                    <Icon Name="upload" /> Import
-                </button>
+                <div class="flex gap-2 mt-2">
+                    <button class="btn btn-pri" style="flex:1;" @onclick="DoImport" disabled="@(_files.Count == 0 || _busy)">
+                        <Icon Name="upload" /> @(_busy ? "Importing…" : "Import all")
+                    </button>
+                    <button class="btn btn-ghost" style="flex:1;" @onclick="DoCheckImport" disabled="@(_files.Count == 0 || _busy)">
+                        <Icon Name="filter" /> Check &amp; Import
+                    </button>
+                </div>
+                <p class="sub mt-2" style="font-size:0.78rem;">“Import all” adds every row; “Check &amp; Import” lets you pick rows and flag staking first.</p>
                 @if (_result is not null)
                 {
                     <div class="@(_result.Error is null ? "success-message" : "error-message")" style="margin-top:14px;">
@@ -49,60 +55,48 @@
 }
 
 @code {
-    private IBrowserFile? _file;
-    private string? _formatName;
-    private bool _isKnown;
+    private List<IBrowserFile> _files = [];
     private ImportResultDto? _result;
     private bool _busy;
-
-    private static readonly Dictionary<string, string> FormatNames = new()
-    {
-        ["revolut-stocks"] = "Revolut Stocks",
-        ["revolut-commodities"] = "Revolut Commodities",
-        ["trezor"] = "Trezor Wallet",
-        ["generic"] = "Generic CSV",
-        ["unknown"] = "Unknown format"
-    };
 
     protected override void OnInitialized() => Modal.OnChange += Refresh;
     private void Refresh() => InvokeAsync(StateHasChanged);
 
     private void Close()
     {
-        _file = null; _formatName = null; _result = null;
+        _files = []; _result = null;
         Modal.CloseImport();
     }
 
-    private async Task OnFileSelected(InputFileChangeEventArgs e)
+    private void OnFilesSelected(InputFileChangeEventArgs e)
     {
-        _file = e.File;
+        _files = e.GetMultipleFiles(20).ToList();
         _result = null;
-        try
-        {
-            using var content = new MultipartFormDataContent();
-            content.Add(new StreamContent(_file.OpenReadStream(10 * 1024 * 1024)), "file", _file.Name);
-            var detect = await Api.PostFormAsync<DetectResultDto>("/api/transactions/import/detect", content);
-            var fmt = detect?.Format ?? "unknown";
-            _isKnown = fmt != "unknown";
-            _formatName = FormatNames.GetValueOrDefault(fmt, fmt);
-        }
-        catch { _formatName = null; }
     }
 
     private async Task DoImport()
     {
-        if (_file is null || State.CurrentAccountId is null) return;
+        if (_files.Count == 0 || State.CurrentAccountId is null) return;
         _busy = true;
         try
         {
             using var content = new MultipartFormDataContent();
-            content.Add(new StreamContent(_file.OpenReadStream(10 * 1024 * 1024)), "file", _file.Name);
+            foreach (var f in _files)
+                content.Add(new StreamContent(f.OpenReadStream(15 * 1024 * 1024)), "files", f.Name);
             content.Add(new StringContent(State.CurrentAccountId.Value.ToString()), "account_id");
-            _result = await Api.PostFormAsync<ImportResultDto>("/api/transactions/import/csv", content);
+            _result = await Api.PostFormAsync<ImportResultDto>("/api/transactions/import/csv/bulk", content);
             if (_result is not null && _result.Error is null) Modal.RaiseImported();
         }
         catch { Toast.Show("Import failed", "error"); }
         finally { _busy = false; }
+    }
+
+    private void DoCheckImport()
+    {
+        if (_files.Count == 0) return;
+        var files = _files;
+        Modal.CloseImport();
+        Modal.ShowCheckImport(files);
     }
 
     public void Dispose() => Modal.OnChange -= Refresh;

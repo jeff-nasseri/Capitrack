@@ -1,6 +1,8 @@
 using System.Globalization;
 using System.Text.Json;
+using Server.Domain.Accounts;
 using Server.Domain.Holdings;
+using Server.Domain.Transactions;
 using Server.Infrastructure.Persistence;
 
 namespace Server.Infrastructure.Services;
@@ -34,7 +36,10 @@ public sealed class WealthService(CapitrackDbContext db, IPriceService prices, I
     {
         var txs = await db.Transactions.ToListAsync();
         var accounts = await db.Accounts.ToDictionaryAsync(a => a.Id);
-        var holdings = HoldingsCalculator.ByAccount(txs);
+
+        // Cash/savings accounts are valued at their cash balance, never via a market quote,
+        // so their currency "symbol" must never reach Yahoo: feed only non-cash txs to the calculator.
+        var holdings = HoldingsCalculator.ByAccount(txs.Where(t => !IsCashAccount(accounts, t.AccountId)));
 
         var symbols = holdings.Select(h => h.Symbol.Value).Distinct().ToList();
         var priceMap = new Dictionary<string, QuoteDto>();
@@ -71,12 +76,56 @@ public sealed class WealthService(CapitrackDbContext db, IPriceService prices, I
             totalCost += costBasis;
         }
 
+        // Cash/savings accounts: market value = balance × FX(accountCurrency→base); cost basis == market value (no gain).
+        foreach (var cash in CashBalances(txs, accounts, baseCurrency, rates))
+        {
+            if (!perAccount.TryGetValue(cash.AccountId, out var acc))
+                perAccount[cash.AccountId] = acc = new AccountAccum { AccountId = cash.AccountId, AccountName = cash.AccountName };
+            acc.MarketValue += cash.Value;
+            acc.CostBasis += cash.Value;
+            totalWealth += cash.Value;
+            totalCost += cash.Value;
+        }
+
         return new DashboardSummaryDto(
             totalWealth, totalCost, totalWealth - totalCost,
             totalCost > 0 ? (totalWealth - totalCost) / totalCost * 100 : 0,
             baseCurrency,
             perAccount.Values.Select(a => new AccountSummaryDto(a.AccountId, a.AccountName, a.MarketValue, a.CostBasis, a.HoldingsCount)).ToList(),
             holdings.Count);
+    }
+
+    private static bool IsCashAccount(IReadOnlyDictionary<int, Account> accounts, int accountId) =>
+        accounts.TryGetValue(accountId, out var a) && a.Type.IsCash;
+
+    private readonly record struct CashAccountValue(int AccountId, string AccountName, double Value);
+
+    /// <summary>
+    /// Values each cash/savings account at balance × FX(accountCurrency→base).
+    /// Balance = Σ (IncreasesQuantity ? +qty*price : DecreasesQuantity ? -qty*price : 0) over the account's transactions.
+    /// Accounts with no transactions are skipped.
+    /// </summary>
+    private static IEnumerable<CashAccountValue> CashBalances(
+        IEnumerable<Transaction> txs,
+        IReadOnlyDictionary<int, Account> accounts,
+        string baseCurrency,
+        IReadOnlyDictionary<string, double> rates)
+    {
+        foreach (var g in txs.Where(t => IsCashAccount(accounts, t.AccountId)).GroupBy(t => t.AccountId))
+        {
+            var account = accounts.GetValueOrDefault(g.Key);
+            double balance = g.Sum(t =>
+                t.Type.IncreasesQuantity ? t.Quantity.Value * t.Price
+                : t.Type.DecreasesQuantity ? -(t.Quantity.Value * t.Price)
+                : 0);
+
+            double value = balance;
+            var accountCurrency = account?.Currency.Value ?? "";
+            if (!string.IsNullOrEmpty(accountCurrency) && accountCurrency != baseCurrency)
+                value *= rates.GetValueOrDefault($"{accountCurrency}_{baseCurrency}", 1);
+
+            yield return new CashAccountValue(g.Key, account?.Name ?? "", value);
+        }
     }
 
     private class AccountAccum
@@ -109,7 +158,7 @@ public sealed class WealthService(CapitrackDbContext db, IPriceService prices, I
         {
             holdingMap.TryAdd(tx.Symbol.Value, 0);
             if (tx.Type.CountsAsHistoryAdd) holdingMap[tx.Symbol.Value] += tx.Quantity.Value;
-            else if (tx.Type.CountsAsHistorySub) holdingMap[tx.Symbol.Value] -= tx.Quantity.Value;
+            else if (tx.Type.CountsAsHistorySub && !tx.IsStaked) holdingMap[tx.Symbol.Value] -= tx.Quantity.Value;
         }
         var activeSymbols = holdingMap.Where(kv => kv.Value > 0.00000001).Select(kv => kv.Key).ToList();
         if (activeSymbols.Count == 0) return [];
@@ -152,7 +201,7 @@ public sealed class WealthService(CapitrackDbContext db, IPriceService prices, I
                 var tx = transactions[txIndex];
                 running.TryAdd(tx.Symbol.Value, 0);
                 if (tx.Type.CountsAsHistoryAdd) running[tx.Symbol.Value] += tx.Quantity.Value;
-                else if (tx.Type.CountsAsHistorySub) running[tx.Symbol.Value] -= tx.Quantity.Value;
+                else if (tx.Type.CountsAsHistorySub && !tx.IsStaked) running[tx.Symbol.Value] -= tx.Quantity.Value;
                 txIndex++;
             }
 
@@ -191,7 +240,9 @@ public sealed class WealthService(CapitrackDbContext db, IPriceService prices, I
         var today = Today();
         var txs = await db.Transactions.ToListAsync();
         var accounts = await db.Accounts.ToDictionaryAsync(a => a.Id);
-        var holdings = HoldingsCalculator.ByAccount(txs);
+
+        // Exclude cash/savings accounts from market-holding maths (valued at balance below).
+        var holdings = HoldingsCalculator.ByAccount(txs.Where(t => !IsCashAccount(accounts, t.AccountId)));
 
         var priceMap = new Dictionary<string, QuoteDto>();
         foreach (var s in holdings.Select(h => h.Symbol.Value).Distinct())
@@ -224,6 +275,17 @@ public sealed class WealthService(CapitrackDbContext db, IPriceService prices, I
             acc.CostBasis += costBasis;
             totalWealth += marketValue;
             totalCost += costBasis;
+        }
+
+        // Cash/savings accounts: valued at balance × FX(accountCurrency→base); cost basis == market value (no gain).
+        foreach (var cash in CashBalances(txs, accounts, baseCurrency, rates))
+        {
+            if (!details.TryGetValue(cash.AccountId, out var acc))
+                details[cash.AccountId] = acc = new AccountAccum { AccountId = cash.AccountId, AccountName = cash.AccountName };
+            acc.MarketValue += cash.Value;
+            acc.CostBasis += cash.Value;
+            totalWealth += cash.Value;
+            totalCost += cash.Value;
         }
 
         var detailsJson = JsonSerializer.Serialize(new

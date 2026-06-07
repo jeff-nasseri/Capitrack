@@ -13,10 +13,11 @@ namespace Server.Application.Transactions;
 /// <param name="Currency">The transaction currency code.</param>
 /// <param name="Date">The trade date (yyyy-MM-dd).</param>
 /// <param name="Notes">Free-text notes.</param>
+/// <param name="IsStaked">Whether this transaction represents staked crypto.</param>
 /// <param name="CreatedAt">When the record was created.</param>
 /// <param name="AccountName">The owning account's name, if resolved.</param>
 /// <param name="Tags">The tags attached to the transaction.</param>
 public record TransactionDto(
     int Id, int AccountId, string Symbol, string Type, double Quantity, double Price,
-    double Fee, string Currency, string Date, string Notes, DateTime CreatedAt,
+    double Fee, string Currency, string Date, string Notes, bool IsStaked, DateTime CreatedAt,
     string? AccountName, List<TagDto> Tags);
