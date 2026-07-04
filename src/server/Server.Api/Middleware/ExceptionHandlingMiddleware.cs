@@ -16,6 +16,7 @@ public sealed class ExceptionHandlingMiddleware(RequestDelegate next, ILogger<Ex
         catch (NotFoundException ex) { await Write(context, StatusCodes.Status404NotFound, ex.Message); }
         catch (ConflictException ex) { await Write(context, StatusCodes.Status409Conflict, ex.Message); }
         catch (UnauthorizedException ex) { await Write(context, StatusCodes.Status401Unauthorized, ex.Message); }
+        catch (TooManyRequestsException ex) { await Write(context, StatusCodes.Status429TooManyRequests, ex.Message); }
         catch (DomainException ex) { await Write(context, StatusCodes.Status400BadRequest, ex.Message); }
         catch (Exception ex)
         {

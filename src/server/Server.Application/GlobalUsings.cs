@@ -14,3 +14,4 @@ global using Server.Application.Currencies;
 global using Server.Application.Auth;
 global using Server.Application.Prices;
 global using Server.Application.Settings;
+global using Server.Application.Security;

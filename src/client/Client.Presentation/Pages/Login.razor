@@ -33,34 +33,73 @@
         </div>
 
         <div style="padding:46px 40px;display:flex;flex-direction:column;justify-content:center;">
-            <h1 style="font-size:1.5rem;font-weight:800;letter-spacing:-0.02em;">Welcome back</h1>
-            <p class="sub" style="margin-top:4px;">Sign in to your Capitrack instance</p>
-            <form @onsubmit="DoLogin" @onsubmit:preventDefault style="margin-top:26px;display:flex;flex-direction:column;gap:16px;">
-                <div class="field">
-                    <label>Username</label>
-                    <div style="position:relative;">
-                        <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text-4);"><Icon Name="user" Width="17" Height="17" /></span>
-                        <input class="input" style="padding-left:38px;" @bind="_username" @bind:event="oninput" placeholder="Enter username" autocomplete="username" />
+            @if (_step == "credentials")
+            {
+                <h1 style="font-size:1.5rem;font-weight:800;letter-spacing:-0.02em;">Welcome back</h1>
+                <p class="sub" style="margin-top:4px;">Sign in to your Capitrack instance</p>
+                <form @onsubmit="DoLogin" @onsubmit:preventDefault style="margin-top:26px;display:flex;flex-direction:column;gap:16px;">
+                    <div class="field">
+                        <label>Username</label>
+                        <div style="position:relative;">
+                            <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text-4);"><Icon Name="user" Width="17" Height="17" /></span>
+                            <input class="input" style="padding-left:38px;" @bind="_username" @bind:event="oninput" placeholder="Enter username" autocomplete="username" />
+                        </div>
                     </div>
-                </div>
-                <div class="field">
-                    <label>Password</label>
-                    <div style="position:relative;">
-                        <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text-4);"><Icon Name="lock" Width="17" Height="17" /></span>
-                        <input class="input" style="padding-left:38px;" type="password" @bind="_password" @bind:event="oninput" placeholder="Enter password" autocomplete="current-password" />
+                    <div class="field">
+                        <label>Password</label>
+                        <div style="position:relative;">
+                            <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text-4);"><Icon Name="lock" Width="17" Height="17" /></span>
+                            <input class="input" style="padding-left:38px;" type="password" @bind="_password" @bind:event="oninput" placeholder="Enter password" autocomplete="current-password" />
+                        </div>
                     </div>
+                    <button class="btn btn-pri" type="submit" style="height:44px;margin-top:4px;" disabled="@_busy">
+                        <Icon Name="logout" Style="transform:scaleX(-1);" /> Sign In
+                    </button>
+                    @if (_lockout is not null)
+                    {
+                        <div style="padding:11px 13px;border-radius:var(--r-sm);background:var(--down-soft);border:1px solid var(--down);color:var(--down);font-size:0.85rem;font-weight:600;display:flex;gap:8px;align-items:center;">
+                            <Icon Name="shield" Width="16" Height="16" /> <span>@_lockout</span>
+                        </div>
+                    }
+                    else if (_error is not null)
+                    {
+                        <div class="error-message">@_error</div>
+                    }
+                </form>
+                <div style="margin-top:20px;padding:10px 12px;border-radius:var(--r-sm);background:var(--surface-2);border:1px solid var(--border);font-size:0.8rem;color:var(--text-3);display:flex;gap:8px;align-items:center;">
+                    <Icon Name="info" Width="15" Height="15" /> <span>First run? The admin password is printed in the server logs (<code>docker compose logs api</code>).</span>
                 </div>
-                <button class="btn btn-pri" type="submit" style="height:44px;margin-top:4px;">
-                    <Icon Name="logout" Style="transform:scaleX(-1);" /> Sign In
+            }
+            else
+            {
+                <h1 style="font-size:1.5rem;font-weight:800;letter-spacing:-0.02em;">Two-factor authentication</h1>
+                <p class="sub" style="margin-top:4px;">Enter the 6-digit code from your authenticator app</p>
+                <form @onsubmit="VerifyCode" @onsubmit:preventDefault style="margin-top:26px;display:flex;flex-direction:column;gap:16px;">
+                    <div class="field">
+                        <label>Authentication code</label>
+                        <div style="position:relative;">
+                            <span style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text-4);"><Icon Name="shield" Width="17" Height="17" /></span>
+                            <input class="input" style="padding-left:38px;letter-spacing:0.3em;font-size:1.05rem;" @bind="_code" @bind:event="oninput" placeholder="000000" maxlength="6" autocomplete="one-time-code" inputmode="numeric" />
+                        </div>
+                    </div>
+                    <button class="btn btn-pri" type="submit" style="height:44px;margin-top:4px;" disabled="@_busy">
+                        <Icon Name="check" /> Verify
+                    </button>
+                    @if (_lockout is not null)
+                    {
+                        <div style="padding:11px 13px;border-radius:var(--r-sm);background:var(--down-soft);border:1px solid var(--down);color:var(--down);font-size:0.85rem;font-weight:600;display:flex;gap:8px;align-items:center;">
+                            <Icon Name="shield" Width="16" Height="16" /> <span>@_lockout</span>
+                        </div>
+                    }
+                    else if (_error is not null)
+                    {
+                        <div class="error-message">@_error</div>
+                    }
+                </form>
+                <button class="btn btn-ghost btn-sm" style="align-self:flex-start;margin-top:18px;" @onclick="BackToCredentials">
+                    <Icon Name="arrowL" /> Back
                 </button>
-                @if (_error is not null)
-                {
-                    <div class="error-message">@_error</div>
-                }
-            </form>
-            <div style="margin-top:20px;padding:10px 12px;border-radius:var(--r-sm);background:var(--surface-2);border:1px solid var(--border);font-size:0.8rem;color:var(--text-3);display:flex;gap:8px;align-items:center;">
-                <Icon Name="info" Width="15" Height="15" /> <span>First run? The admin password is printed in the server logs (<code>docker compose logs api</code>).</span>
-            </div>
+            }
         </div>
     </div>
 </div>
@@ -75,32 +114,100 @@
 
     private string _username = "admin";
     private string _password = "";
+    private string _code = "";
+    private string _step = "credentials"; // "credentials" | "twofactor"
     private string? _error;
+    private string? _lockout;
+    private bool _busy;
 
     private async Task DoLogin()
     {
         _error = null;
+        _lockout = null;
+        _busy = true;
         try
         {
-            var (ok, json) = await Api.PostWithStatusAsync<JsonElement>("/api/auth/login",
+            var (ok, status, json) = await Api.PostWithFullStatusAsync<JsonElement>("/api/auth/login",
                 new { username = _username, password = _password });
             if (ok)
             {
-                Dispatcher.Dispatch(new SetUserAction(new SessionDto
+                var required = json.TryGetProperty("two_factor_required", out var r) && r.ValueKind == JsonValueKind.True;
+                if (required)
                 {
-                    Username = json.GetProperty("username").GetString() ?? "",
-                    BaseCurrency = json.TryGetProperty("base_currency", out var bc) ? bc.GetString() ?? "EUR" : "EUR"
-                }));
+                    _code = "";
+                    _step = "twofactor";
+                }
+                else
+                {
+                    ApplySession(json);
+                }
+            }
+            else if (status == 429)
+            {
+                _lockout = ReadError(json) ?? "Too many attempts. Please try again later.";
             }
             else
             {
-                _error = json.TryGetProperty("error", out var e) ? e.GetString() : "Login failed";
+                _error = ReadError(json) ?? "Login failed";
             }
         }
         catch
         {
             _error = "Connection error";
         }
+        finally { _busy = false; }
+    }
+
+    private async Task VerifyCode()
+    {
+        _error = null;
+        _lockout = null;
+        _busy = true;
+        try
+        {
+            var (ok, status, json) = await Api.PostWithFullStatusAsync<JsonElement>("/api/auth/login/2fa",
+                new { username = _username, password = _password, code = _code });
+            if (ok)
+            {
+                ApplySession(json);
+            }
+            else if (status == 429)
+            {
+                _lockout = ReadError(json) ?? "Too many attempts. Please try again later.";
+            }
+            else
+            {
+                _error = ReadError(json) ?? "Invalid code";
+            }
+        }
+        catch
+        {
+            _error = "Connection error";
+        }
+        finally { _busy = false; }
+    }
+
+    private void ApplySession(JsonElement json)
+    {
+        if (!json.TryGetProperty("session", out var session) || session.ValueKind != JsonValueKind.Object)
+            return;
+        Dispatcher.Dispatch(new SetUserAction(new SessionDto
+        {
+            Username = session.TryGetProperty("username", out var u) ? u.GetString() ?? "" : "",
+            BaseCurrency = session.TryGetProperty("base_currency", out var bc) ? bc.GetString() ?? "EUR" : "EUR",
+            TwoFactorEnabled = session.TryGetProperty("two_factor_enabled", out var tf) && tf.ValueKind == JsonValueKind.True
+        }));
+    }
+
+    private static string? ReadError(JsonElement json)
+        => json.ValueKind == JsonValueKind.Object && json.TryGetProperty("error", out var e) ? e.GetString() : null;
+
+    private void BackToCredentials()
+    {
+        _step = "credentials";
+        _code = "";
+        _error = null;
+        _lockout = null;
     }
 
     private void ToggleTheme() => Dispatcher.Dispatch(new ToggleThemeAction());

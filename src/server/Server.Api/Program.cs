@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.DataProtection;
@@ -5,6 +6,7 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.OpenApi.Models;
 using Server.Api.Auth;
 using Server.Api.Middleware;
+using Server.Api.Services;
 using Server.Application;
 using Server.Application.Common.Interfaces;
 using Server.Infrastructure;
@@ -58,12 +60,26 @@ var dataDir = Path.GetDirectoryName(dbPath);
 builder.Services.AddDataProtection()
     .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(dataDir ?? ".", "dp-keys")));
 
-// Behind nginx — honour X-Forwarded-* headers.
+// Prune old sign-in audit rows on a schedule so the attempts table can't grow unbounded.
+builder.Services.AddHostedService<LoginAttemptRetentionService>();
+
+// Behind nginx — honour X-Forwarded-* headers, but ONLY when the immediate peer is a private-network
+// proxy. Trusting every proxy (KnownIPNetworks.Clear()) would let anyone who could reach the API port
+// directly forge X-Forwarded-For to spoof the client IP the blacklist/rate-limiter keys on. Restricting
+// trust to the private ranges (where the nginx sidecar lives) keeps the real client IP correct behind
+// the proxy while ignoring a forged header from any public direct connection.
 builder.Services.Configure<ForwardedHeadersOptions>(o =>
 {
     o.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost;
+    o.ForwardLimit = null; // walk the whole chain, popping trusted (private) hops until the real client IP
     o.KnownIPNetworks.Clear();
     o.KnownProxies.Clear();
+    o.KnownIPNetworks.Add(new System.Net.IPNetwork(IPAddress.Parse("10.0.0.0"), 8));
+    o.KnownIPNetworks.Add(new System.Net.IPNetwork(IPAddress.Parse("172.16.0.0"), 12));
+    o.KnownIPNetworks.Add(new System.Net.IPNetwork(IPAddress.Parse("192.168.0.0"), 16));
+    o.KnownIPNetworks.Add(new System.Net.IPNetwork(IPAddress.Parse("127.0.0.0"), 8));
+    o.KnownIPNetworks.Add(new System.Net.IPNetwork(IPAddress.IPv6Loopback, 128));
+    o.KnownIPNetworks.Add(new System.Net.IPNetwork(IPAddress.Parse("fc00::"), 7)); // IPv6 unique-local
 });
 
 // Optional CORS for separate-origin dev.

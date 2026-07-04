@@ -74,6 +74,19 @@ public class ApiClient(HttpClient http) : IApiClient
         return (r.IsSuccessStatusCode, value);
     }
 
+    /// <summary>
+    /// Like <see cref="PostWithStatusAsync{T}"/> but also surfaces the numeric HTTP
+    /// status code, so callers can distinguish e.g. 401 (bad credentials) from 429
+    /// (rate-limited / locked out).
+    /// </summary>
+    public async Task<(bool ok, int status, T? value)> PostWithFullStatusAsync<T>(string url, object body, JsonSerializerOptions? opts = null)
+    {
+        var r = await http.PostAsJsonAsync(url, body, opts ?? Json);
+        if (r.StatusCode == HttpStatusCode.Unauthorized && !url.Contains("/auth/")) Unauthorized?.Invoke();
+        var value = await r.Content.ReadFromJsonAsync<T>(Json);
+        return (r.IsSuccessStatusCode, (int)r.StatusCode, value);
+    }
+
     public async Task<T?> PutAsync<T>(string url, object body, JsonSerializerOptions? opts = null)
     {
         var r = await http.PutAsJsonAsync(url, body, opts ?? Json);

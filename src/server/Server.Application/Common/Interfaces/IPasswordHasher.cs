@@ -8,4 +8,10 @@ public interface IPasswordHasher
 
     /// <summary>Verifies a plaintext password against a stored hash.</summary>
     bool Verify(string password, string hash);
+
+    /// <summary>
+    /// A valid, throwaway hash to verify against when the account does not exist, so an
+    /// unknown-username login costs the same time as a known one (defeats user enumeration).
+    /// </summary>
+    string DummyHash { get; }
 }
