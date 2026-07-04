@@ -3,4 +3,5 @@ namespace Server.Application.Auth;
 /// <summary>The authenticated session, returned by login and session queries.</summary>
 /// <param name="Username">The signed-in user's name.</param>
 /// <param name="BaseCurrency">The user's base currency code.</param>
-public record SessionDto(string Username, string BaseCurrency);
+/// <param name="TwoFactorEnabled">Whether two-factor authentication is active for the user.</param>
+public record SessionDto(string Username, string BaseCurrency, bool TwoFactorEnabled);

@@ -15,6 +15,12 @@ public sealed class User : AggregateRoot<int>
     /// <summary>When the user was created.</summary>
     public DateTime CreatedAt { get; private set; }
 
+    /// <summary>Whether two-factor (TOTP) authentication is active for this user.</summary>
+    public bool TwoFactorEnabled { get; private set; }
+
+    /// <summary>The TOTP shared secret (base32). Present once setup has begun; kept even while disabled only during setup.</summary>
+    public string? TwoFactorSecret { get; private set; }
+
     private User() { }
 
     /// <summary>Creates a new user, requiring a non-empty username.</summary>
@@ -35,4 +41,28 @@ public sealed class User : AggregateRoot<int>
 
     /// <summary>Changes the user's base currency.</summary>
     public void ChangeBaseCurrency(CurrencyCode currency) => BaseCurrency = currency;
+
+    /// <summary>Stores a freshly-generated TOTP secret to begin 2FA setup. 2FA stays disabled until confirmed.</summary>
+    public void BeginTwoFactorSetup(string secret)
+    {
+        if (string.IsNullOrWhiteSpace(secret))
+            throw new DomainException("A two-factor secret is required.");
+        TwoFactorSecret = secret;
+        TwoFactorEnabled = false;
+    }
+
+    /// <summary>Activates 2FA after the user has proven possession of the authenticator (a valid code was verified).</summary>
+    public void ConfirmTwoFactor()
+    {
+        if (string.IsNullOrWhiteSpace(TwoFactorSecret))
+            throw new DomainException("Two-factor setup has not been started.");
+        TwoFactorEnabled = true;
+    }
+
+    /// <summary>Turns 2FA off and discards the secret.</summary>
+    public void DisableTwoFactor()
+    {
+        TwoFactorEnabled = false;
+        TwoFactorSecret = null;
+    }
 }

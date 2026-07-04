@@ -19,6 +19,8 @@ public interface IApiClient
 
     Task<(bool ok, T? value)> PostWithStatusAsync<T>(string url, object body, JsonSerializerOptions? opts = null);
 
+    Task<(bool ok, int status, T? value)> PostWithFullStatusAsync<T>(string url, object body, JsonSerializerOptions? opts = null);
+
     Task<T?> PutAsync<T>(string url, object body, JsonSerializerOptions? opts = null);
 
     Task<(bool ok, T? value)> PutWithStatusAsync<T>(string url, object body, JsonSerializerOptions? opts = null);

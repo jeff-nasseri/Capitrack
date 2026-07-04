@@ -23,15 +23,19 @@ public static class DependencyInjection
         services.AddScoped<IGoalRepository, GoalRepository>();
         services.AddScoped<ICurrencyRateRepository, CurrencyRateRepository>();
         services.AddScoped<IUserRepository, UserRepository>();
+        services.AddScoped<ILoginAttemptRepository, LoginAttemptRepository>();
+        services.AddScoped<IBlacklistRepository, BlacklistRepository>();
 
         // Services
         services.AddSingleton<IPasswordHasher, BcryptPasswordHasher>();
         services.AddSingleton<ISystemService, SystemService>();
         services.AddSingleton<IYahooFinanceClient, YahooFinanceClient>();
+        services.AddSingleton<ITotpService, TotpService>();
         services.AddScoped<IPriceService, PriceService>();
         services.AddScoped<IWealthService, WealthService>();
         services.AddScoped<IImporterService, ImporterService>();
         services.AddScoped<IDatabaseBackupService, DatabaseBackupService>();
+        services.AddScoped<ILoginSecurityService, LoginSecurityService>();
 
         return services;
     }

@@ -235,6 +235,178 @@
                             <p class="sub" style="@(_pwOk ? "color:var(--up);" : "color:var(--down);")">@_pwMsg</p>
                         }
                     </form>
+
+                    <div style="height:1px;background:var(--border);margin:24px 0;"></div>
+
+                    <div style="font-weight:600;font-size:0.92rem;margin-bottom:4px;">Two-factor authentication</div>
+                    <p class="sub" style="margin-bottom:14px;line-height:1.6;">Require a 6-digit code from an authenticator app in addition to your password when signing in.</p>
+
+                    @if (_twoFactorEnabled && _setup is null)
+                    {
+                        <SettingsRow Title="Authenticator app" Sub="A time-based one-time code is required at sign-in.">
+                            <span class="chip up"><Icon Name="check" Width="12" Height="12" /> 2FA is enabled</span>
+                            <button class="btn btn-danger btn-sm" @onclick="DisableTwoFactor"><Icon Name="x" /> Disable 2FA</button>
+                        </SettingsRow>
+                    }
+                    else if (_setup is not null)
+                    {
+                        <div class="card card-pad" style="max-width:460px;">
+                            <p class="sub" style="margin-bottom:14px;line-height:1.6;">Scan this QR code with your authenticator app (Google Authenticator, Authy, 1Password…), or enter the secret manually. Then type the current 6-digit code to finish.</p>
+                            <div style="display:flex;justify-content:center;margin-bottom:16px;">
+                                <div style="background:#fff;border-radius:var(--r-sm);padding:12px;width:180px;height:180px;display:grid;place-items:center;">
+                                    @((MarkupString)_setup.QrSvg)
+                                </div>
+                            </div>
+                            <div class="field" style="margin-bottom:14px;">
+                                <label>Secret (manual entry)</label>
+                                <code style="display:block;padding:9px 12px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-sm);font-size:0.85rem;word-break:break-all;">@_setup.Secret</code>
+                            </div>
+                            <div class="field" style="margin-bottom:14px;">
+                                <label>Verification code</label>
+                                <input class="input" style="letter-spacing:0.3em;" @bind="_setupCode" @bind:event="oninput" placeholder="000000" maxlength="6" autocomplete="one-time-code" inputmode="numeric" />
+                            </div>
+                            @if (_setupMsg is not null)
+                            {
+                                <p class="sub" style="color:var(--down);margin-bottom:12px;">@_setupMsg</p>
+                            }
+                            <div class="flex gap-2">
+                                <button class="btn btn-pri btn-sm" @onclick="ConfirmTwoFactor"><Icon Name="check" /> Verify &amp; enable</button>
+                                <button class="btn btn-ghost btn-sm" @onclick="CancelTwoFactorSetup"><Icon Name="x" /> Cancel</button>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <SettingsRow Title="Authenticator app" Sub="Not configured. Add an extra layer of protection to your account.">
+                            <button class="btn btn-pri btn-sm" @onclick="BeginTwoFactorSetup"><Icon Name="shield" /> Enable 2FA</button>
+                        </SettingsRow>
+                    }
+                </SettingsPanel>
+            }
+            else if (_panel == "access")
+            {
+                <SettingsPanel IconName="shield" Title="Login Security">
+                    <div style="font-weight:600;font-size:0.92rem;margin-bottom:4px;">Login attempts</div>
+                    <p class="sub" style="margin-bottom:14px;">Recent sign-in attempts across all IP addresses.</p>
+                    @if (_attempts.Count == 0)
+                    {
+                        <div class="empty-state"><Icon Name="clock" /><p>No login attempts recorded.</p></div>
+                    }
+                    else
+                    {
+                        <div class="card" style="overflow:hidden;">
+                            <div style="overflow-x:auto;">
+                                <table class="tbl">
+                                    <thead>
+                                        <tr>
+                                            <th style="padding-top:16px;">Time</th><th style="padding-top:16px;">User</th>
+                                            <th style="padding-top:16px;">IP</th><th style="padding-top:16px;">Result</th>
+                                            <th style="padding-top:16px;">Reason</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var a in _attempts)
+                                        {
+                                            <tr>
+                                                <td style="white-space:nowrap;">@a.CreatedAt.ToString("MMM d, yyyy HH:mm")</td>
+                                                <td>@a.Username</td>
+                                                <td class="num">@a.IpAddress</td>
+                                                <td>
+                                                    @if (a.Success)
+                                                    {
+                                                        <span class="chip up"><Icon Name="check" Width="12" Height="12" /> success</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span class="chip down"><Icon Name="x" Width="12" Height="12" /> failed</span>
+                                                    }
+                                                </td>
+                                                <td class="sub">@a.Reason</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        @if (_attemptsTotalPages > 1)
+                        {
+                            <div class="flex gap-2" style="justify-content:center;align-items:center;margin-top:18px;flex-wrap:wrap;">
+                                <button class="btn btn-ghost btn-sm" disabled="@(_attemptsPage <= 1)" @onclick="() => GoToAttempts(_attemptsPage - 1)">Prev</button>
+
+                                @if (AttemptsWindow().First() > 1)
+                                {
+                                    <button class="btn btn-ghost btn-sm" style="min-width:34px;" @onclick="() => GoToAttempts(1)">1</button>
+                                    @if (AttemptsWindow().First() > 2)
+                                    {
+                                        <span class="sub" style="padding:0 2px;">…</span>
+                                    }
+                                }
+
+                                @foreach (var p in AttemptsWindow())
+                                {
+                                    var current = p;
+                                    <button class="btn btn-sm @(current == _attemptsPage ? "btn-pri" : "btn-ghost")" style="min-width:34px;" @onclick="() => GoToAttempts(current)">@current</button>
+                                }
+
+                                @if (AttemptsWindow().Last() < _attemptsTotalPages)
+                                {
+                                    @if (AttemptsWindow().Last() < _attemptsTotalPages - 1)
+                                    {
+                                        <span class="sub" style="padding:0 2px;">…</span>
+                                    }
+                                    <button class="btn btn-ghost btn-sm" style="min-width:34px;" @onclick="() => GoToAttempts(_attemptsTotalPages)">@_attemptsTotalPages</button>
+                                }
+
+                                <button class="btn btn-ghost btn-sm" disabled="@(_attemptsPage >= _attemptsTotalPages)" @onclick="() => GoToAttempts(_attemptsPage + 1)">Next</button>
+                            </div>
+                        }
+                    }
+
+                    <div style="height:1px;background:var(--border);margin:24px 0;"></div>
+
+                    <div style="font-weight:600;font-size:0.92rem;margin-bottom:4px;">IP blacklist</div>
+                    <p class="sub" style="margin-bottom:14px;line-height:1.6;">Blocked IPs cannot sign in. IPs are auto-blocked for 15 minutes after 3 failed attempts.</p>
+
+                    <div class="flex gap-2" style="align-items:flex-end;flex-wrap:wrap;margin-bottom:16px;">
+                        <div class="field" style="margin-bottom:0;"><label>IP address</label><input class="input btn-sm" style="width:180px;" @bind="_newIp" placeholder="203.0.113.7" /></div>
+                        <div class="field" style="margin-bottom:0;flex:1;min-width:160px;"><label>Reason (optional)</label><input class="input btn-sm" @bind="_newIpReason" placeholder="Manual block" /></div>
+                        <button class="btn btn-pri btn-sm" @onclick="AddBlacklist"><Icon Name="plus" /> Add IP to blacklist</button>
+                    </div>
+
+                    @if (_blacklist.Count == 0)
+                    {
+                        <div class="empty-state"><Icon Name="shield" /><p>No blacklisted IPs.</p></div>
+                    }
+                    else
+                    {
+                        <div class="card" style="overflow:hidden;">
+                            <div style="overflow-x:auto;">
+                                <table class="tbl">
+                                    <thead>
+                                        <tr>
+                                            <th style="padding-top:16px;">IP</th><th style="padding-top:16px;">User</th>
+                                            <th style="padding-top:16px;">Reason</th><th style="padding-top:16px;">Expires</th><th style="width:40px;"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var b in _blacklist)
+                                        {
+                                            <tr>
+                                                <td class="num">@b.IpAddress</td>
+                                                <td>@(string.IsNullOrEmpty(b.Username) ? "—" : b.Username)</td>
+                                                <td class="sub">@b.Reason</td>
+                                                <td style="white-space:nowrap;">@(b.ExpiresAt is null ? "permanent" : b.ExpiresAt.Value.ToString("MMM d, yyyy HH:mm"))</td>
+                                                <td>
+                                                    <button class="btn-icon btn-sm" style="width:32px;height:32px;color:var(--down);" title="Remove" @onclick="() => RemoveBlacklist(b.Id)"><Icon Name="trash" Width="15" Height="15" /></button>
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    }
                 </SettingsPanel>
             }
             else if (_panel == "about")
@@ -281,6 +453,7 @@
         ("currencies", "Currency Rates", "swap"), ("database", "Database", "database"),
         ("providers", "Market Data", "trend"),
         ("appearance", "Appearance", "palette"), ("security", "Security", "lock"),
+        ("access", "Login Security", "shield"),
         ("about", "About", "info"), ("danger", "Danger Zone", "skull")
     ];
 
@@ -313,11 +486,36 @@
     private IBrowserFile? _backupFile;
     private bool _importBusy;
 
+    // ---- Two-factor auth ----
+    private bool _twoFactorEnabled;
+    private TwoFactorSetupDto? _setup;
+    private string _setupCode = "";
+    private string? _setupMsg;
+
+    // ---- Login security (access panel) ----
+    private List<LoginAttemptDto> _attempts = [];
+    private int _attemptsPage = 1;
+    private int _attemptsTotal;
+    private const int AttemptsPageSize = 25;
+    private List<BlacklistedIpDto> _blacklist = [];
+    private string _newIp = "", _newIpReason = "";
+
+    private int _attemptsTotalPages => Math.Max(1, (int)Math.Ceiling(_attemptsTotal / (double)AttemptsPageSize));
+
+    private IEnumerable<int> AttemptsWindow()
+    {
+        const int span = 2;
+        var start = Math.Max(1, _attemptsPage - span);
+        var end = Math.Min(_attemptsTotalPages, _attemptsPage + span);
+        for (var p = start; p <= end; p++) yield return p;
+    }
+
     protected override async Task OnInitializedAsync()
     {
         TopBar.Set("Settings");
         var session = await Api.GetAsync<SessionDto>("/api/auth/session");
         _base = session?.BaseCurrency ?? "EUR";
+        _twoFactorEnabled = session?.TwoFactorEnabled ?? false;
         var about = await Api.GetAsync<AboutDto>("/api/settings/about");
         _version = about?.Version ?? "1.0.0";
         var db = await Api.GetAsync<DatabaseInfoDto>("/api/settings/database");
@@ -329,6 +527,7 @@
         }
         _providers = await Api.GetAsync<List<MarketDataProviderDto>>("/api/settings/providers") ?? [];
         await LoadAll();
+        await LoadAccess();
     }
 
     private async Task LoadAll()
@@ -473,7 +672,7 @@
         _base = cur;
         await Api.PutAsync<object>("/api/auth/currency", new { base_currency = cur });
         if (Session.Value.User is { } user)
-            Dispatcher.Dispatch(new SetUserAction(new SessionDto { Username = user.Username, BaseCurrency = cur }));
+            Dispatcher.Dispatch(new SetUserAction(new SessionDto { Username = user.Username, BaseCurrency = cur, TwoFactorEnabled = user.TwoFactorEnabled }));
         Toast.Show("Main currency updated", "success");
         await LoadAll();
     }
@@ -489,6 +688,106 @@
             new { currentPassword = _curPw, newPassword = _newPw }, ApiClient.RawJson);
         if (ok) { _pwOk = true; _pwMsg = "Password updated"; _curPw = _newPw = _confirmPw = ""; }
         else { _pwOk = false; _pwMsg = json.TryGetProperty("error", out var er) ? er.GetString() : "Failed to update"; }
+    }
+
+    // ---- Two-factor auth ----
+    private async Task BeginTwoFactorSetup()
+    {
+        _setupMsg = null;
+        _setupCode = "";
+        _setup = await Api.PostAsync<TwoFactorSetupDto>("/api/auth/2fa/setup", new { });
+        if (_setup is null) Toast.Show("Could not start 2FA setup", "error");
+    }
+
+    private void CancelTwoFactorSetup()
+    {
+        _setup = null;
+        _setupCode = "";
+        _setupMsg = null;
+    }
+
+    private async Task ConfirmTwoFactor()
+    {
+        _setupMsg = null;
+        var (ok, json) = await Api.PostWithStatusAsync<JsonElement>("/api/auth/2fa/confirm", new { code = _setupCode });
+        if (ok)
+        {
+            _twoFactorEnabled = true;
+            _setup = null;
+            _setupCode = "";
+            Toast.Show("Two-factor enabled", "success");
+        }
+        else
+        {
+            _setupMsg = json.ValueKind == JsonValueKind.Object && json.TryGetProperty("error", out var er) ? er.GetString() : "Invalid code";
+        }
+    }
+
+    private async Task DisableTwoFactor()
+    {
+        if (!await Confirm.AskAsync("Disable two-factor authentication", "Your account will no longer require a one-time code at sign-in. Enter your password to confirm.", "Disable 2FA", danger: true)) return;
+        var pw = await JS.InvokeAsync<string?>("prompt", "Enter your account password to disable 2FA");
+        if (string.IsNullOrEmpty(pw)) return;
+        var (ok, json) = await Api.PostWithStatusAsync<JsonElement>("/api/auth/2fa/disable", new { password = pw });
+        if (ok)
+        {
+            _twoFactorEnabled = false;
+            Toast.Show("Two-factor disabled", "success");
+        }
+        else
+        {
+            var err = json.ValueKind == JsonValueKind.Object && json.TryGetProperty("error", out var er) ? er.GetString() : "Could not disable 2FA";
+            Toast.Show(err ?? "Could not disable 2FA", "error");
+        }
+    }
+
+    // ---- Login security (access panel) ----
+    private async Task LoadAccess()
+    {
+        var (attempts, total) = await Api.GetWithCountAsync<List<LoginAttemptDto>>($"/api/security/login-attempts?page={_attemptsPage}&page_size={AttemptsPageSize}");
+        _attempts = attempts ?? [];
+        _attemptsTotal = total;
+        _blacklist = await Api.GetAsync<List<BlacklistedIpDto>>("/api/security/blacklist") ?? [];
+        StateHasChanged();
+    }
+
+    private async Task GoToAttempts(int page)
+    {
+        var target = Math.Clamp(page, 1, _attemptsTotalPages);
+        if (target == _attemptsPage) return;
+        _attemptsPage = target;
+        var (attempts, total) = await Api.GetWithCountAsync<List<LoginAttemptDto>>($"/api/security/login-attempts?page={_attemptsPage}&page_size={AttemptsPageSize}");
+        _attempts = attempts ?? [];
+        _attemptsTotal = total;
+    }
+
+    private async Task AddBlacklist()
+    {
+        if (string.IsNullOrWhiteSpace(_newIp)) { Toast.Show("IP address required", "error"); return; }
+        var (ok, _, json) = await Api.PostWithFullStatusAsync<JsonElement>(
+            "/api/security/blacklist", new { ip_address = _newIp.Trim(), reason = _newIpReason });
+        if (ok)
+        {
+            _newIp = "";
+            _newIpReason = "";
+            Toast.Show("IP blacklisted", "success");
+            _blacklist = await Api.GetAsync<List<BlacklistedIpDto>>("/api/security/blacklist") ?? [];
+        }
+        else
+        {
+            var msg = json.ValueKind == JsonValueKind.Object
+                      && json.TryGetProperty("error", out var e) && e.ValueKind == JsonValueKind.String
+                ? e.GetString()! : "Could not add IP";
+            Toast.Show(msg, "error");
+        }
+    }
+
+    private async Task RemoveBlacklist(int id)
+    {
+        if (!await Confirm.AskAsync("Remove from blacklist", "This IP will be allowed to sign in again.", "Remove", danger: true)) return;
+        await Api.DeleteAsync<object>($"/api/security/blacklist/{id}");
+        Toast.Show("IP removed from blacklist", "success");
+        _blacklist = await Api.GetAsync<List<BlacklistedIpDto>>("/api/security/blacklist") ?? [];
     }
 
     // ---- Database ----

@@ -2,6 +2,7 @@ using Server.Domain.Accounts;
 using Server.Domain.Categories;
 using Server.Domain.Currencies;
 using Server.Domain.Goals;
+using Server.Domain.Security;
 using Server.Domain.Tags;
 using Server.Domain.Transactions;
 using Server.Domain.Users;
@@ -22,6 +23,8 @@ public class CapitrackDbContext(DbContextOptions<CapitrackDbContext> options) : 
     public DbSet<AccountTag> AccountTags => Set<AccountTag>();
     public DbSet<GoalTag> GoalTags => Set<GoalTag>();
     public DbSet<TransactionTag> TransactionTags => Set<TransactionTag>();
+    public DbSet<LoginAttempt> LoginAttempts => Set<LoginAttempt>();
+    public DbSet<BlacklistedIp> BlacklistedIps => Set<BlacklistedIp>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -31,6 +34,7 @@ public class CapitrackDbContext(DbContextOptions<CapitrackDbContext> options) : 
             e.HasIndex(x => x.Username).IsUnique();
             e.Property(x => x.BaseCurrency).HasConversion(v => v.Value, v => CurrencyCode.Create(v));
             e.Property(x => x.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP").ValueGeneratedOnAdd();
+            e.Property(x => x.TwoFactorEnabled).HasDefaultValue(false);
         });
 
         b.Entity<Account>(e =>
@@ -131,6 +135,18 @@ public class CapitrackDbContext(DbContextOptions<CapitrackDbContext> options) : 
             e.HasKey(x => new { x.TransactionId, x.TagId });
             e.HasOne<Transaction>().WithMany().HasForeignKey(x => x.TransactionId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne<Tag>().WithMany().HasForeignKey(x => x.TagId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<LoginAttempt>(e =>
+        {
+            e.HasIndex(x => x.IpAddress);
+            e.HasIndex(x => x.CreatedAt);
+        });
+
+        b.Entity<BlacklistedIp>(e =>
+        {
+            e.HasIndex(x => x.IpAddress);
+            e.HasIndex(x => x.ExpiresAt);
         });
     }
 }
