@@ -58,6 +58,15 @@ public sealed class AuthController(IMediator mediator) : ControllerBase
         return Ok(new { message = "Base currency updated" });
     }
 
+    /// <summary>Changes how long sessions stay signed in (15–120 minutes). Applies to live sessions too.</summary>
+    [HttpPut("session-lifetime")]
+    [Authorize]
+    public async Task<IActionResult> ChangeSessionLifetime([FromBody] ChangeSessionLifetimeCommand command)
+    {
+        await mediator.Send(command);
+        return Ok(new { message = "Session lifetime updated" });
+    }
+
     /// <summary>Begins 2FA setup: returns the secret, otpauth URI and a QR SVG to scan.</summary>
     [HttpPost("2fa/setup")]
     [Authorize]
@@ -86,7 +95,19 @@ public sealed class AuthController(IMediator mediator) : ControllerBase
         var identity = new ClaimsIdentity(
             [new Claim(ClaimTypes.Name, session.Username)],
             CookieAuthenticationDefaults.AuthenticationScheme);
-        await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity));
+        // The ticket carries the user's configured lifetime; sliding expiration renews it in
+        // same-sized windows, so this acts as an inactivity timeout of exactly that length.
+        var now = DateTimeOffset.UtcNow;
+        await HttpContext.SignInAsync(
+            CookieAuthenticationDefaults.AuthenticationScheme,
+            new ClaimsPrincipal(identity),
+            new AuthenticationProperties
+            {
+                IsPersistent = true,
+                AllowRefresh = true,
+                IssuedUtc = now,
+                ExpiresUtc = now.AddMinutes(session.SessionLifetimeMinutes)
+            });
     }
 
     private string ClientIp() => HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";

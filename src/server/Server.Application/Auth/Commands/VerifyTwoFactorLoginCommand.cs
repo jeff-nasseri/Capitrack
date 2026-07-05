@@ -52,6 +52,6 @@ public sealed class VerifyTwoFactorLoginHandler(
         }
 
         await security.RecordAttemptAsync(user.Username, ip, true, "success", request.UserAgent, cancellationToken);
-        return LoginResultDto.SignedIn(new SessionDto(user.Username, user.BaseCurrency.Value, user.TwoFactorEnabled));
+        return LoginResultDto.SignedIn(new SessionDto(user.Username, user.BaseCurrency.Value, user.TwoFactorEnabled, user.SessionLifetimeMinutes));
     }
 }

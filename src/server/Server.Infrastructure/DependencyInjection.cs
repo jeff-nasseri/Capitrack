@@ -45,6 +45,12 @@ public static class DependencyInjection
         using var scope = provider.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<CapitrackDbContext>();
         db.Database.EnsureCreated();
+        // EnsureCreated is a no-op on an existing database, so upgrade its schema to the
+        // current model (adds tables/columns introduced since the volume was created).
+        var logger = scope.ServiceProvider
+            .GetRequiredService<Microsoft.Extensions.Logging.ILoggerFactory>()
+            .CreateLogger(nameof(SqliteSchemaUpgrader));
+        SqliteSchemaUpgrader.Upgrade(db, logger);
         var hasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher>();
         SeedService.Seed(db, hasher);
     }
