@@ -28,7 +28,9 @@ public sealed class TotpService : ITotpService
     {
         using var generator = new QRCodeGenerator();
         using var data = generator.CreateQrCode(otpauthUri, QRCodeGenerator.ECCLevel.M);
-        return new SvgQRCode(data).GetGraphic(4);
+        // ViewBox sizing (no fixed width/height attributes) so the SVG scales to whatever box the
+        // client puts it in, instead of overflowing at its native pixel size.
+        return new SvgQRCode(data).GetGraphic(4, "#000000", "#ffffff", true, SvgQRCode.SizingMode.ViewBoxAttribute);
     }
 
     /// <inheritdoc />

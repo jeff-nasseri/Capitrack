@@ -253,7 +253,7 @@
                         <div class="card card-pad" style="max-width:460px;">
                             <p class="sub" style="margin-bottom:14px;line-height:1.6;">Scan this QR code with your authenticator app (Google Authenticator, Authy, 1Password…), or enter the secret manually. Then type the current 6-digit code to finish.</p>
                             <div style="display:flex;justify-content:center;margin-bottom:16px;">
-                                <div style="background:#fff;border-radius:var(--r-sm);padding:12px;width:180px;height:180px;display:grid;place-items:center;">
+                                <div class="qr-box">
                                     @((MarkupString)_setup.QrSvg)
                                 </div>
                             </div>
@@ -329,9 +329,14 @@
                             </div>
                         </div>
 
+                        <div class="flex" style="justify-content:space-between;align-items:center;margin-top:12px;">
+                            <span class="sub">@_attemptsTotal attempt@(_attemptsTotal == 1 ? "" : "s") recorded</span>
+                            <span class="sub">Page @_attemptsPage of @_attemptsTotalPages</span>
+                        </div>
+
                         @if (_attemptsTotalPages > 1)
                         {
-                            <div class="flex gap-2" style="justify-content:center;align-items:center;margin-top:18px;flex-wrap:wrap;">
+                            <div class="flex gap-2" style="justify-content:center;align-items:center;margin-top:12px;flex-wrap:wrap;">
                                 <button class="btn btn-ghost btn-sm" disabled="@(_attemptsPage <= 1)" @onclick="() => GoToAttempts(_attemptsPage - 1)">Prev</button>
 
                                 @if (AttemptsWindow().First() > 1)
