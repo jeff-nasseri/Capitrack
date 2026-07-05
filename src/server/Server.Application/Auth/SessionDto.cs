@@ -4,4 +4,5 @@ namespace Server.Application.Auth;
 /// <param name="Username">The signed-in user's name.</param>
 /// <param name="BaseCurrency">The user's base currency code.</param>
 /// <param name="TwoFactorEnabled">Whether two-factor authentication is active for the user.</param>
-public record SessionDto(string Username, string BaseCurrency, bool TwoFactorEnabled);
+/// <param name="SessionLifetimeMinutes">How long the session stays valid without activity, in minutes.</param>
+public record SessionDto(string Username, string BaseCurrency, bool TwoFactorEnabled, int SessionLifetimeMinutes);

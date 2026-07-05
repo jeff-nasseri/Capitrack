@@ -35,6 +35,7 @@ public class CapitrackDbContext(DbContextOptions<CapitrackDbContext> options) : 
             e.Property(x => x.BaseCurrency).HasConversion(v => v.Value, v => CurrencyCode.Create(v));
             e.Property(x => x.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP").ValueGeneratedOnAdd();
             e.Property(x => x.TwoFactorEnabled).HasDefaultValue(false);
+            e.Property(x => x.SessionLifetimeMinutes).HasDefaultValue(User.MaxSessionLifetimeMinutes);
         });
 
         b.Entity<Account>(e =>

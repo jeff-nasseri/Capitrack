@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
@@ -47,10 +48,43 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         o.Cookie.HttpOnly = true;
         o.Cookie.SameSite = SameSiteMode.Strict;
         o.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
-        o.ExpireTimeSpan = TimeSpan.FromDays(7);
+        // Fallback only — each sign-in stamps the ticket with the user's configured lifetime
+        // (15–120 min), and OnValidatePrincipal below re-applies it when the setting changes.
+        o.ExpireTimeSpan = TimeSpan.FromMinutes(Server.Domain.Users.User.MaxSessionLifetimeMinutes);
         o.SlidingExpiration = true;
         o.Events.OnRedirectToLogin = ctx => { ctx.Response.StatusCode = 401; return Task.CompletedTask; };
         o.Events.OnRedirectToAccessDenied = ctx => { ctx.Response.StatusCode = 403; return Task.CompletedTask; };
+        // Enforce the CURRENT configured session lifetime on every request, so changing the
+        // setting also applies to cookies issued earlier (shorter → sessions past the new
+        // limit are rejected; different → the ticket window is rewritten and the cookie renewed).
+        o.Events.OnValidatePrincipal = async ctx =>
+        {
+            var username = ctx.Principal?.Identity?.Name;
+            if (string.IsNullOrEmpty(username) || ctx.Properties.IssuedUtc is not { } issued) return;
+
+            var users = ctx.HttpContext.RequestServices.GetRequiredService<IUserRepository>();
+            var user = await users.GetByUsernameAsync(username, ctx.HttpContext.RequestAborted);
+            if (user is null)
+            {
+                ctx.RejectPrincipal();
+                await ctx.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+                return;
+            }
+
+            var lifetime = TimeSpan.FromMinutes(user.SessionLifetimeMinutes);
+            if (DateTimeOffset.UtcNow > issued + lifetime)
+            {
+                ctx.RejectPrincipal();
+                await ctx.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+                return;
+            }
+
+            if (ctx.Properties.ExpiresUtc - issued != lifetime)
+            {
+                ctx.Properties.ExpiresUtc = issued + lifetime;
+                ctx.ShouldRenew = true;
+            }
+        };
     });
 builder.Services.AddAuthorization();
 

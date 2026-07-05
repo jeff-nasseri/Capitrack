@@ -54,6 +54,39 @@ public class SecurityTests
         user.TwoFactorSecret.Should().BeNull();
     }
 
+    // ---- Session lifetime ----
+
+    [Fact]
+    public void Session_lifetime_defaults_to_two_hours()
+    {
+        var user = User.Create("admin", "hash", CurrencyCode.Eur);
+        user.SessionLifetimeMinutes.Should().Be(120);
+    }
+
+    [Theory]
+    [InlineData(15)]
+    [InlineData(60)]
+    [InlineData(120)]
+    public void Session_lifetime_accepts_values_within_range(int minutes)
+    {
+        var user = User.Create("admin", "hash", CurrencyCode.Eur);
+        user.ChangeSessionLifetime(minutes);
+        user.SessionLifetimeMinutes.Should().Be(minutes);
+    }
+
+    [Theory]
+    [InlineData(14)]
+    [InlineData(0)]
+    [InlineData(-5)]
+    [InlineData(121)]
+    [InlineData(1440)]
+    public void Session_lifetime_rejects_values_outside_range(int minutes)
+    {
+        var user = User.Create("admin", "hash", CurrencyCode.Eur);
+        var act = () => user.ChangeSessionLifetime(minutes);
+        act.Should().Throw<DomainException>();
+    }
+
     // ---- LoginAttempt audit record ----
 
     [Fact]

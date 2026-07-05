@@ -238,6 +238,25 @@
 
                     <div style="height:1px;background:var(--border);margin:24px 0;"></div>
 
+                    <div style="font-weight:600;font-size:0.92rem;margin-bottom:4px;">Session</div>
+                    <p class="sub" style="margin-bottom:14px;line-height:1.6;">How long you stay signed in without activity. Applies immediately, including to the current session.</p>
+                    <div class="flex gap-2" style="align-items:flex-end;">
+                        <div class="field" style="margin-bottom:0;">
+                            <label>Session lifetime</label>
+                            <select class="input" style="width:200px;" @bind="_sessionLifetime">
+                                <option value="15">15 minutes</option>
+                                <option value="30">30 minutes</option>
+                                <option value="45">45 minutes</option>
+                                <option value="60">1 hour</option>
+                                <option value="90">1.5 hours</option>
+                                <option value="120">2 hours</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-pri btn-sm" @onclick="SaveSessionLifetime"><Icon Name="check" /> Save</button>
+                    </div>
+
+                    <div style="height:1px;background:var(--border);margin:24px 0;"></div>
+
                     <div style="font-weight:600;font-size:0.92rem;margin-bottom:4px;">Two-factor authentication</div>
                     <p class="sub" style="margin-bottom:14px;line-height:1.6;">Require a 6-digit code from an authenticator app in addition to your password when signing in.</p>
 
@@ -493,6 +512,7 @@
 
     // ---- Two-factor auth ----
     private bool _twoFactorEnabled;
+    private int _sessionLifetime = 120;
     private TwoFactorSetupDto? _setup;
     private string _setupCode = "";
     private string? _setupMsg;
@@ -521,6 +541,7 @@
         var session = await Api.GetAsync<SessionDto>("/api/auth/session");
         _base = session?.BaseCurrency ?? "EUR";
         _twoFactorEnabled = session?.TwoFactorEnabled ?? false;
+        _sessionLifetime = session?.SessionLifetimeMinutes ?? 120;
         var about = await Api.GetAsync<AboutDto>("/api/settings/about");
         _version = about?.Version ?? "1.0.0";
         var db = await Api.GetAsync<DatabaseInfoDto>("/api/settings/database");
@@ -683,6 +704,14 @@
     }
 
     private async Task ToggleDots() => await Prefs.SetShowTransactionDots(!Prefs.ShowTransactionDots);
+
+    private async Task SaveSessionLifetime()
+    {
+        var (ok, _) = await Api.PutWithStatusAsync<JsonElement>("/api/auth/session-lifetime", new { minutes = _sessionLifetime });
+        Toast.Show(ok
+            ? $"Sessions now expire after {(_sessionLifetime >= 60 ? $"{_sessionLifetime / 60.0:0.#} hour(s)" : $"{_sessionLifetime} minutes")} of inactivity"
+            : "Could not update session lifetime", ok ? "success" : "error");
+    }
 
     // ---- Security ----
     private async Task ChangePassword()

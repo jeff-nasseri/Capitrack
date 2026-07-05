@@ -23,6 +23,6 @@ public sealed class GetSessionQueryHandler(
         var user = await users.GetByUsernameAsync(currentUser.Username!, cancellationToken)
                    ?? throw new UnauthorizedException("Not authenticated");
 
-        return new SessionDto(user.Username, user.BaseCurrency.Value, user.TwoFactorEnabled);
+        return new SessionDto(user.Username, user.BaseCurrency.Value, user.TwoFactorEnabled, user.SessionLifetimeMinutes);
     }
 }

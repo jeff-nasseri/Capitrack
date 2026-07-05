@@ -21,6 +21,15 @@ public sealed class User : AggregateRoot<int>
     /// <summary>The TOTP shared secret (base32). Present once setup has begun; kept even while disabled only during setup.</summary>
     public string? TwoFactorSecret { get; private set; }
 
+    /// <summary>The shortest session lifetime a user may configure.</summary>
+    public const int MinSessionLifetimeMinutes = 15;
+
+    /// <summary>The longest session lifetime a user may configure (also the default).</summary>
+    public const int MaxSessionLifetimeMinutes = 120;
+
+    /// <summary>How long a signed-in session stays valid without activity, in minutes (15–120).</summary>
+    public int SessionLifetimeMinutes { get; private set; } = MaxSessionLifetimeMinutes;
+
     private User() { }
 
     /// <summary>Creates a new user, requiring a non-empty username.</summary>
@@ -64,5 +73,14 @@ public sealed class User : AggregateRoot<int>
     {
         TwoFactorEnabled = false;
         TwoFactorSecret = null;
+    }
+
+    /// <summary>Changes how long sessions stay valid, bounded to 15 minutes – 2 hours.</summary>
+    public void ChangeSessionLifetime(int minutes)
+    {
+        if (minutes is < MinSessionLifetimeMinutes or > MaxSessionLifetimeMinutes)
+            throw new DomainException(
+                $"Session lifetime must be between {MinSessionLifetimeMinutes} and {MaxSessionLifetimeMinutes} minutes.");
+        SessionLifetimeMinutes = minutes;
     }
 }
