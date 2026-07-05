@@ -369,6 +369,10 @@ input[type="color"].input { padding: 4px; height: 42px; cursor: pointer; }
 .menu-pop button.danger { color: var(--down); }
 .menu-pop button svg { width: 15px; height: 15px; }
 
+/* 2FA setup QR (Settings → Security): the server SVG scales to fill this box exactly */
+.qr-box { background: #fff; border-radius: var(--r-sm); padding: 12px; width: 180px; height: 180px; flex-shrink: 0; }
+.qr-box svg { display: block; width: 100%; height: 100%; }
+
 @media (max-width: 860px) {
   .grid[style*="repeat(3"], .grid[style*="repeat(4"], .grid[style*="1fr 1fr"] { grid-template-columns: 1fr !important; }
 }
