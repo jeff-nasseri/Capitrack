@@ -79,9 +79,12 @@
         _holdings = all.OrderByDescending(h => h.MarketValue).ToList();
         State.AllHoldings = _holdings;
 
-        _base = _holdings.FirstOrDefault()?.Currency ?? "USD";
-        _totVal = _holdings.Sum(h => h.MarketValue);
-        _totGain = _holdings.Sum(h => h.Gain);
+        // totals in the base currency, at the rates the dashboard uses (holdings are quoted in several currencies)
+        var currencies = _holdings.Select(h => h.Currency).Distinct();
+        var fx = await Api.GetAsync<ExchangeRatesDto>($"/api/prices/rates?currencies={Uri.EscapeDataString(string.Join(',', currencies))}") ?? new ExchangeRatesDto();
+        _base = fx.BaseCurrency;
+        _totVal = _holdings.Sum(h => fx.ToBase(h.MarketValue, h.Currency));
+        _totGain = _holdings.Sum(h => fx.ToBase(h.Gain, h.Currency));
         var cost = _totVal - _totGain;
         _gp = cost > 0 ? (double)(_totGain / cost * 100) : 0;
         _winners = _holdings.Count(h => h.Gain >= 0);

@@ -10,4 +10,5 @@ public class DashboardSummaryDto
     public string BaseCurrency { get; set; } = "EUR";
     public List<AccountSummaryDto> Accounts { get; set; } = [];
     public int HoldingsCount { get; set; }
+    public decimal TodayChange { get; set; }
 }

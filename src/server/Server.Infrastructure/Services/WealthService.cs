@@ -37,6 +37,17 @@ public sealed class WealthService(CapitrackDbContext db, IPriceService prices, I
         return dict;
     }
 
+    public async Task<ExchangeRatesDto> RatesToBaseAsync(IEnumerable<string> currencies)
+    {
+        var baseCurrency = await BaseCurrencyAsync();
+        var wanted = currencies.Select(c => c.Trim().ToUpperInvariant()).Where(c => c.Length == 3).Distinct().ToList();
+        var rates = await RatesAsync(wanted, baseCurrency);
+        var result = new Dictionary<string, decimal> { [baseCurrency] = 1m };
+        foreach (var c in wanted)
+            if (rates.TryGetValue($"{c}_{baseCurrency}", out var rate)) result[c] = rate;
+        return new ExchangeRatesDto(baseCurrency, result);
+    }
+
     private static string QuoteCurrency(QuoteDto q) => string.IsNullOrEmpty(q.Currency) ? "USD" : q.Currency;
 
     private static IEnumerable<string?> CostCurrencies(IEnumerable<AccountHolding> holdings, IReadOnlyDictionary<int, Account> accounts) =>
@@ -70,17 +81,24 @@ public sealed class WealthService(CapitrackDbContext db, IPriceService prices, I
             priceMap.Values.Select(QuoteCurrency).Concat(CostCurrencies(holdings, accounts)).Concat(CashCurrencies(accounts)), baseCurrency);
 
         var perAccount = new Dictionary<int, AccountAccum>();
-        decimal totalWealth = 0, totalCost = 0;
+        decimal totalWealth = 0, totalCost = 0, todayChange = 0;
 
         foreach (var h in holdings)
         {
             var price = priceMap.TryGetValue(h.Symbol.Value, out var p) ? p : new QuoteDto { Price = 0, Currency = "USD" };
             decimal marketValue = h.Quantity * price.Price;
             decimal costBasis = h.Quantity * h.AvgCost;
+            // the session's change, from the quote's percentage: value now − value at the session start
+            decimal change = price.ChangePercent is > -100 and not 0 ? marketValue - marketValue / (1 + (decimal)price.ChangePercent / 100) : 0;
 
             var priceCurrency = string.IsNullOrEmpty(price.Currency) ? "USD" : price.Currency;
             if (priceCurrency != baseCurrency)
-                marketValue *= rates.GetValueOrDefault($"{priceCurrency}_{baseCurrency}", 1m);
+            {
+                var rate = rates.GetValueOrDefault($"{priceCurrency}_{baseCurrency}", 1m);
+                marketValue *= rate;
+                change *= rate;
+            }
+            todayChange += change;
 
             var account = accounts.GetValueOrDefault(h.AccountId);
             // cost basis is expressed in the currency the units were acquired in (not the account's)
@@ -113,7 +131,8 @@ public sealed class WealthService(CapitrackDbContext db, IPriceService prices, I
             totalCost > 0 ? (totalWealth - totalCost) / totalCost * 100 : 0,
             baseCurrency,
             perAccount.Values.Select(a => new AccountSummaryDto(a.AccountId, a.AccountName, a.MarketValue, a.CostBasis, a.HoldingsCount)).ToList(),
-            holdings.Count);
+            holdings.Count,
+            todayChange);
     }
 
     private static bool IsCashAccount(IReadOnlyDictionary<int, Account> accounts, int accountId) =>

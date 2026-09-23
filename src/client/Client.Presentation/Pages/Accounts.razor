@@ -29,16 +29,16 @@
                 </div>
                 <div class="flex row-between mt-4" style="align-items:flex-end;">
                     <div>
-                        <div class="bignum tnum" style="font-size:1.7rem;">@Format.Money(value, a.Currency)</div>
+                        <div class="bignum tnum" style="font-size:1.7rem;">@Format.Money(value, _base)</div>
                         <div class="flex gap-2 mt-1">
-                            <span class="delta @(gain >= 0 ? "up" : "down")" style="font-size:0.82rem;">@Format.Signed(gain, a.Currency, 0)</span>
+                            <span class="delta @(gain >= 0 ? "up" : "down")" style="font-size:0.82rem;">@Format.Signed(gain, _base, 0)</span>
                             <span class="delta @(gp >= 0 ? "up" : "down")" style="font-size:0.82rem;">@Format.Pct(gp, 1)</span>
                         </div>
                     </div>
                     <Sparkline Data="Series.AccountSeries(a.Id, (double)cost, (double)value)" Up="@(gp >= 0)" W="92" H="36" />
                 </div>
                 <div class="flex row-between mt-4" style="padding-top:12px;border-top:1px solid var(--hairline);">
-                    <span class="sub">Cost basis @Format.Money(cost, a.Currency, 0)</span>
+                    <span class="sub">Cost basis @Format.Money(cost, _base, 0)</span>
                     <span class="sub">@a.Currency</span>
                 </div>
             </div>
@@ -56,6 +56,7 @@
     private List<AccountDto> _accounts = [];
     private Dictionary<int, AccountSummaryDto> _values = [];
     private List<TagDto> _tags = [];
+    private string _base = "EUR";
 
     private RenderFragment Actions => @<button class="btn btn-pri btn-sm" @onclick="ShowAddAccount"><Icon Name="plus" /> Add account</button>;
 
@@ -72,7 +73,9 @@
         await Task.WhenAll(accountsTask, summaryTask);
         _accounts = await accountsTask ?? [];
         State.Accounts = _accounts;
-        _values = (await summaryTask)?.Accounts.ToDictionary(a => a.AccountId) ?? [];
+        var summary = await summaryTask;
+        _values = summary?.Accounts.ToDictionary(a => a.AccountId) ?? [];
+        _base = summary?.BaseCurrency ?? _base;
     }
 
     private void Open(int id) => Nav.NavigateTo($"/accounts/{id}");

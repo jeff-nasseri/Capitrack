@@ -83,7 +83,7 @@
                     </div>
                     <Sparkline Data="Series.AccountSeries(a.Id, (double)cost, (double)value)" Up="@(gp >= 0)" W="70" H="26" />
                     <div style="text-align:right;min-width:96px;">
-                        <div class="tnum" style="font-weight:700;font-size:0.95rem;">@Format.Money(value, a.Currency)</div>
+                        <div class="tnum" style="font-weight:700;font-size:0.95rem;">@Format.Money(value, _base)</div>
                         <div class="delta @(gp >= 0 ? "up" : "down")" style="font-size:0.78rem;">@Format.Pct(gp, 1)</div>
                     </div>
                     <Icon Name="chevR" Width="15" Height="15" Style="color:var(--text-4);" />
@@ -203,13 +203,11 @@
         var summaryTask = Api.GetAsync<DashboardSummaryDto>("/api/prices/dashboard/summary");
         var accountsTask = Api.GetAsync<List<AccountDto>>("/api/accounts");
         var goalsTask = Api.GetAsync<List<GoalDto>>("/api/goals");
-        var ratesTask = Api.GetAsync<List<CurrencyRateDto>>("/api/currencies");
-        await Task.WhenAll(summaryTask, accountsTask, goalsTask, ratesTask);
+        await Task.WhenAll(summaryTask, accountsTask, goalsTask);
 
         var summary = await summaryTask;
         _accounts = await accountsTask ?? [];
         _goals = await goalsTask ?? [];
-        var rates = BuildRates(await ratesTask ?? []);
         State.Accounts = _accounts;
         State.DashboardSummary = summary;
 
@@ -220,13 +218,16 @@
             _gain = summary.TotalGain;
             _gp = summary.TotalGainPercent;
             _invested = summary.TotalCost;
+            // today's change comes from the server, converted with the same rates as the totals
+            _today = summary.TodayChange;
+            _todayPct = _net - _today != 0 ? (double)(_today / (_net - _today) * 100) : 0;
             _summaryByAccount = summary.Accounts.ToDictionary(a => a.AccountId);
             BuildAllocation(summary);
         }
         StateHasChanged();
 
         await LoadChart(_period);
-        await LoadHoldings(rates);
+        await LoadHoldings();
         _busy = false;
         StateHasChanged();
         _ = Api.PostAsync<object>("/api/prices/daily-wealth", new { });
@@ -258,7 +259,7 @@
 
     private async Task OnPeriod(string p) => await LoadChart(p);
 
-    private async Task LoadHoldings(Dictionary<string, decimal> rates)
+    private async Task LoadHoldings()
     {
         var all = new List<EnrichedHolding>();
         foreach (var a in _accounts)
@@ -270,7 +271,6 @@
         var symbols = all.Select(h => h.Symbol).Distinct().ToList();
         var prices = symbols.Count > 0 ? await Api.PostAsync<Dictionary<string, QuoteDto>>("/api/prices/quotes", new { symbols }) ?? [] : [];
 
-        decimal today = 0;
         foreach (var h in all)
         {
             var p = prices.GetValueOrDefault(h.Symbol);
@@ -280,21 +280,10 @@
             h.Price = price; h.Name = p?.Name ?? h.Symbol; h.ChangePercent = p?.ChangePercent ?? 0;
             h.MarketValue = mv; h.CostBasis = cb; h.Gain = mv - cb;
             h.GainPct = cb > 0 ? (double)((mv - cb) / cb * 100) : 0; h.Currency = p?.Currency ?? "USD";
-
-            var todayNative = h.Quantity * price * ((decimal)h.ChangePercent / 100);
-            today += Convert(todayNative, h.Currency, _base, rates);
         }
-        _today = today;
-        _todayPct = _net != 0 ? (double)(today / _net * 100) : 0;
         _holdings = all.OrderByDescending(h => h.MarketValue).ToList();
         State.AllHoldings = _holdings;
     }
-
-    private static Dictionary<string, decimal> BuildRates(List<CurrencyRateDto> rates)
-        => rates.ToDictionary(r => $"{r.FromCurrency}_{r.ToCurrency}", r => r.Rate);
-
-    private static decimal Convert(decimal amount, string from, string to, Dictionary<string, decimal> rates)
-        => from == to ? amount : amount * rates.GetValueOrDefault($"{from}_{to}", 1m);
 
     private static List<string> BuildLabels(List<string> dates)
     {

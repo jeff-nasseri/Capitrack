@@ -157,17 +157,12 @@
         var accountTask = Api.GetAsync<AccountDto>($"/api/accounts/{Id}");
         var holdingsTask = Api.GetAsync<List<HoldingDto>>($"/api/accounts/{Id}/holdings");
         var txTask = Api.GetAsync<List<TransactionDto>>($"/api/transactions?account_id={Id}");
-        var ratesTask = Api.GetAsync<List<CurrencyRateDto>>("/api/currencies");
-        var sessionTask = Api.GetAsync<SessionDto>("/api/auth/session");
-        await Task.WhenAll(accountTask, holdingsTask, txTask, ratesTask, sessionTask);
+        await Task.WhenAll(accountTask, holdingsTask, txTask);
 
         _account = await accountTask;
         if (_account is null) return;
         var holdings = await holdingsTask ?? [];
         _transactions = await txTask ?? [];
-        var rates = new Dictionary<string, decimal>();
-        foreach (var r in await ratesTask ?? []) rates[$"{r.FromCurrency}_{r.ToCurrency}"] = r.Rate;
-        _base = (await sessionTask)?.BaseCurrency ?? _account.Currency;
 
         TopBar.Set(_account.Name, Actions, onBack: () => Nav.NavigateTo("/accounts"));
 
@@ -180,6 +175,11 @@
 
         var symbols = holdings.Select(h => h.Symbol).ToList();
         var prices = symbols.Count > 0 ? await Api.PostAsync<Dictionary<string, QuoteDto>>("/api/prices/quotes", new { symbols }) ?? [] : [];
+        // the same rates the dashboard converts with (manual rate, else the ECB rate)
+        var currencies = prices.Values.Select(q => q.Currency).Concat(holdings.Select(h => h.CostCurrency ?? _account.Currency)).Append(_account.Currency).Distinct();
+        var fx = await Api.GetAsync<ExchangeRatesDto>($"/api/prices/rates?currencies={Uri.EscapeDataString(string.Join(',', currencies))}");
+        _base = fx?.BaseCurrency ?? _account.Currency;
+        var rates = (fx?.Rates ?? []).ToDictionary(kv => $"{kv.Key}_{_base}", kv => kv.Value);
 
         _totalValue = 0; _totalCost = 0; _invested = 0; _contribution = 0;
         var enriched = new List<EnrichedHolding>();

@@ -1,11 +1,13 @@
+using System.Globalization;
 using Server.Application.Common.Interfaces;
 using Server.Application.Prices;
 using Server.Application.Settings;
+using Server.Domain.Transactions;
 using Server.Infrastructure.Services;
 
 namespace Server.Tests;
 
-/// <summary>Live quotes: fetched together, cached, misses remembered.</summary>
+/// <summary>Live quotes: fetched together, cached, misses remembered; and the dashboard totals built from them.</summary>
 public class WealthSummaryTests
 {
     /// <summary>Quotes from a fixed table (USD); USD→EUR at 0.8; counts the batch requests.</summary>
@@ -45,5 +47,27 @@ public class WealthSummaryTests
         first.Keys.Should().Equal("QB-A-USD");
         second["QB-A-USD"].Price.Should().Be(10m);                         // from the 5-minute cache
         market.Batches.Should().ContainSingle().Which.Should().Equal("QB-A-USD", "QB-MISSING-USD");
+    }
+
+    [Fact]
+    public async Task Dashboard_converts_with_the_ECB_rate_when_no_manual_rate_is_set_and_reports_the_days_change()
+    {
+        using var t = new TestDb();
+        var account = t.AddAccount("Wallet", "crypto", "USD");
+        using (var db = t.NewContext())
+        {
+            db.Transactions.Add(Transaction.Create(account, Symbol.Create("QD-BTC-USD"), TransactionType.Buy, Quantity.Create(2), 50, 0,
+                CurrencyCode.Usd, TradeDate.Create(DateTime.UtcNow.AddDays(-5).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)), null));
+            await db.SaveChangesAsync();
+        }
+        // +25% today: 2 × 100 now, 2 × 80 at the session start
+        var market = new FakeMarket(new() { ["QD-BTC-USD"] = new QuoteDto { Price = 100m, Currency = "USD", ChangePercent = 25 } });
+        using var ctx = t.NewContext();
+        var summary = await new WealthService(ctx, new PriceService(ctx, market), market).DashboardSummaryAsync();
+
+        summary.BaseCurrency.Should().Be("EUR");
+        summary.TotalWealth.Should().Be(160m);   // 200 USD × 0.8, not 200 "EUR"
+        summary.TotalCost.Should().Be(80m);      // 100 USD × 0.8
+        summary.TodayChange.Should().Be(32m);    // (200 − 160) USD × 0.8
     }
 }

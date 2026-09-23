@@ -30,7 +30,7 @@
     <div class="flex gap-2" style="align-items:flex-end;margin-top:18px;">
         <div class="bignum tnum">@Format.Money(_price, _currency)</div>
         <div class="delta @(_changePct >= 0 ? "up" : "down")" style="font-size:0.9rem;padding-bottom:7px;">
-            @Format.Signed(_priceChange, _currency) (@Format.Pct(_changePct)) <span class="sub" style="font-weight:400;">past 3 months</span>
+            @Format.Signed(_priceChange, _currency) (@Format.Pct(_changePct)) <span class="sub" style="font-weight:400;">today</span>
         </div>
     </div>
 
@@ -204,9 +204,13 @@
         _todayReturn = totalQty * (_price * (decimal)_changePct / 100);
         _typeLabel = AssetType(Symbol);
 
-        var summary = State.DashboardSummary ?? await Api.GetAsync<DashboardSummaryDto>("/api/prices/dashboard/summary");
-        var totalWealth = summary?.TotalWealth ?? _marketValue;
-        _portfolioPct = totalWealth > 0 ? (double)(_marketValue / totalWealth * 100) : 0;
+        // share of the portfolio: this position in the base currency against the dashboard's total
+        var summaryTask = State.DashboardSummary is { } known ? Task.FromResult<DashboardSummaryDto?>(known) : Api.GetAsync<DashboardSummaryDto>("/api/prices/dashboard/summary");
+        var fxTask = Api.GetAsync<ExchangeRatesDto>($"/api/prices/rates?currencies={Uri.EscapeDataString(_currency)}");
+        await Task.WhenAll(summaryTask, fxTask);
+        var totalWealth = (await summaryTask)?.TotalWealth ?? 0;
+        var valueInBase = (await fxTask ?? new ExchangeRatesDto()).ToBase(_marketValue, _currency);
+        _portfolioPct = totalWealth > 0 ? (double)(valueInBase / totalWealth * 100) : 0;
 
         StateHasChanged();
         await LoadChart(_period);

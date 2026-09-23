@@ -12,6 +12,9 @@ public interface IWealthService
     /// <summary>Computes and stores today's wealth snapshot.</summary>
     Task<DailyWealthSnapshotDto> SaveDailyWealthAsync();
 
+    /// <summary>Today's rates from each currency to the base currency, exactly as the dashboard converts.</summary>
+    Task<ExchangeRatesDto> RatesToBaseAsync(IEnumerable<string> currencies);
+
     /// <summary>Returns stored daily wealth snapshots between two dates.</summary>
     Task<List<DailyWealthDto>> GetDailyWealthAsync(string start, string end);
 
