@@ -13,7 +13,7 @@ public sealed partial class ImporterService(CapitrackDbContext db) : IImporterSe
     private static readonly string[] ValidTypes =
         ["buy", "sell", "transfer_in", "transfer_out", "dividend", "interest", "fee"];
 
-    private record ImportedTransaction(string Symbol, string Type, double Quantity, double Price, double Fee, string Currency, string Date, string Notes);
+    private record ImportedTransaction(string Symbol, string Type, decimal Quantity, decimal Price, decimal Fee, string Currency, string Date, string Notes);
 
     // ---- CSV parsing into header->value dictionaries (csv-parse columns:true equivalent) ----
     private static (List<Dictionary<string, string>> Records, List<string> Headers) ParseCsv(string content)
@@ -63,7 +63,7 @@ public sealed partial class ImporterService(CapitrackDbContext db) : IImporterSe
     }
 
     // ---- Fingerprint / dedup ----
-    private static string Fingerprint(int accountId, string symbol, string type, double quantity, double price, string date)
+    private static string Fingerprint(int accountId, string symbol, string type, decimal quantity, decimal price, string date)
     {
         var datePart = (date ?? "").Split('T')[0].Split(' ')[0];
         return $"{accountId}|{symbol}|{type}|{quantity.ToString("F8", CultureInfo.InvariantCulture)}|{price.ToString("F4", CultureInfo.InvariantCulture)}|{datePart}";
@@ -214,13 +214,13 @@ public sealed partial class ImporterService(CapitrackDbContext db) : IImporterSe
             };
             if (txType == "") continue;
 
-            double quantity = Math.Abs(Num(Get(r, "Quantity", "0")));
-            double price = Num(Clean(Get(r, "Price per share", "0")));
-            double total = Math.Abs(Num(Clean(Get(r, "Total Amount", "0"))));
+            decimal quantity = Math.Abs(Num(Get(r, "Quantity", "0")));
+            decimal price = Num(Clean(Get(r, "Price per share", "0")));
+            decimal total = Math.Abs(Num(Clean(Get(r, "Total Amount", "0"))));
             var currency = Get(r, "Currency", "USD").Trim();
             var date = IsoDate(Get(r, "Date").Trim());
 
-            double finalQty = quantity, finalPrice = price;
+            decimal finalQty = quantity, finalPrice = price;
             if (txType == "dividend") { finalQty = total; finalPrice = 1; }
             if (txType == "transfer_in" && quantity == 0 && total == 0) { finalQty = Num(Get(r, "Quantity", "0")); finalPrice = 0; }
             if (string.IsNullOrEmpty(date)) continue;
@@ -238,8 +238,8 @@ public sealed partial class ImporterService(CapitrackDbContext db) : IImporterSe
         {
             if (Get(r, "State").Trim() != "COMPLETED") continue;
             var description = Get(r, "Description").Trim();
-            double amount = Num(Get(r, "Amount", "0"));
-            double fee = Math.Abs(Num(Get(r, "Fee", "0")));
+            decimal amount = Num(Get(r, "Amount", "0"));
+            decimal fee = Math.Abs(Num(Get(r, "Fee", "0")));
             var currency = Get(r, "Currency", "XAU").Trim();
             var dateStr = Get(r, "Started Date", Get(r, "Completed Date")).Trim();
             var date = string.IsNullOrEmpty(dateStr) ? "" : dateStr.Split(' ')[0];
@@ -263,10 +263,10 @@ public sealed partial class ImporterService(CapitrackDbContext db) : IImporterSe
         foreach (var r in records)
         {
             var type = Get(r, "Type").Trim().ToUpperInvariant();
-            double amount = Math.Abs(Num(Get(r, "Amount", "0")));
+            decimal amount = Math.Abs(Num(Get(r, "Amount", "0")));
             var amountUnit = Get(r, "Amount unit", "BTC").Trim();
-            double fiatUsd = Math.Abs(Num(Clean(Get(r, "Fiat (USD)", "0"))));
-            double fee = Math.Abs(Num(Clean(Get(r, "Fee", "0"))));
+            decimal fiatUsd = Math.Abs(Num(Clean(Get(r, "Fiat (USD)", "0"))));
+            decimal fee = Math.Abs(Num(Clean(Get(r, "Fee", "0"))));
             var dateStr = Get(r, "Date").Trim();
             var txId = Get(r, "Transaction ID").Trim();
 
@@ -283,7 +283,7 @@ public sealed partial class ImporterService(CapitrackDbContext db) : IImporterSe
             string txType = type switch { "RECV" => "transfer_in", "SENT" => "transfer_out", _ => "" };
             if (txType == "") continue;
 
-            double price = amount > 0 ? fiatUsd / amount : 0;
+            decimal price = amount > 0 ? fiatUsd / amount : 0;
             var notes = !string.IsNullOrEmpty(txId) ? $"TxID: {txId[..Math.Min(16, txId.Length)]}..." : $"Trezor {amountUnit}";
             list.Add(new ImportedTransaction(symbol, txType, amount, price, fee, "USD", date, notes));
         }
@@ -297,9 +297,9 @@ public sealed partial class ImporterService(CapitrackDbContext db) : IImporterSe
         {
             var symbol = Pick(r, "symbol", "Symbol", "SYMBOL").ToUpperInvariant();
             var type = Or(Pick(r, "type", "Type", "TYPE"), "buy").ToLowerInvariant();
-            double quantity = Num(Or(Pick(r, "quantity", "Quantity", "QUANTITY"), "0"));
-            double price = Num(Or(Pick(r, "price", "Price", "PRICE"), "0"));
-            double fee = Num(Or(Pick(r, "fee", "Fee", "FEE"), "0"));
+            decimal quantity = Num(Or(Pick(r, "quantity", "Quantity", "QUANTITY"), "0"));
+            decimal price = Num(Or(Pick(r, "price", "Price", "PRICE"), "0"));
+            decimal fee = Num(Or(Pick(r, "fee", "Fee", "FEE"), "0"));
             var currency = Or(Pick(r, "currency", "Currency", "CURRENCY"), "EUR");
             var date = Pick(r, "date", "Date", "DATE");
             var notes = Pick(r, "notes", "Notes", "NOTES");
@@ -325,7 +325,7 @@ public sealed partial class ImporterService(CapitrackDbContext db) : IImporterSe
     private static string Or(string value, string fallback) => string.IsNullOrEmpty(value) ? fallback : value;
 
     private static string Clean(string s) => MyRegex().Replace(s, "");
-    private static double Num(string s) => double.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var d) ? d : 0;
+    private static decimal Num(string s) => decimal.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var d) ? d : 0;
 
     private static string IsoDate(string s)
     {

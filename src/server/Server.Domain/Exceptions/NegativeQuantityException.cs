@@ -4,6 +4,6 @@ namespace Server.Domain.Exceptions;
 public sealed class NegativeQuantityException : DomainException
 {
     /// <summary>Creates the exception for the offending <paramref name="value"/>.</summary>
-    public NegativeQuantityException(double value)
+    public NegativeQuantityException(decimal value)
         : base($"Quantity must be zero or positive but was {value}.") { }
 }

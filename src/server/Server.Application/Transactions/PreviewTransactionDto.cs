@@ -13,5 +13,5 @@ namespace Server.Application.Transactions;
 /// <param name="IsDuplicate">True when the row's fingerprint already exists in the target account.</param>
 /// <param name="CanStake">True when the row may be flagged as staked (an outgoing crypto transfer).</param>
 public record PreviewTransactionDto(
-    int Index, string Symbol, string Type, double Quantity, double Price, double Fee,
+    int Index, string Symbol, string Type, decimal Quantity, decimal Price, decimal Fee,
     string Currency, string Date, string Notes, bool IsDuplicate, bool CanStake);

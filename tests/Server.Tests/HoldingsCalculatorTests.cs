@@ -5,8 +5,8 @@ namespace Server.Tests;
 
 public class HoldingsCalculatorTests
 {
-    private static Transaction Tx(string symbol, TransactionType type, double qty, double price,
-        double fee = 0, string date = "2024-01-01", int accountId = 1) =>
+    private static Transaction Tx(string symbol, TransactionType type, decimal qty, decimal price,
+        decimal fee = 0, string date = "2024-01-01", int accountId = 1) =>
         Transaction.Create(accountId, Symbol.Create(symbol), type, Quantity.Create(qty), price, fee,
             CurrencyCode.Usd, TradeDate.Create(date), null);
 
@@ -35,11 +35,11 @@ public class HoldingsCalculatorTests
         var txs = new[]
         {
             Tx("BTC-USD", TransactionType.Buy, 1, 30000),
-            Tx("BTC-USD", TransactionType.TransferIn, 0.5, 0),
+            Tx("BTC-USD", TransactionType.TransferIn, 0.5m, 0),
         };
 
         var holding = HoldingsCalculator.ForAccount(txs).Single();
-        holding.Quantity.Should().Be(1.5);
+        holding.Quantity.Should().Be(1.5m);
     }
 
     [Fact]

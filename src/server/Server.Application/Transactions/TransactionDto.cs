@@ -18,6 +18,6 @@ namespace Server.Application.Transactions;
 /// <param name="AccountName">The owning account's name, if resolved.</param>
 /// <param name="Tags">The tags attached to the transaction.</param>
 public record TransactionDto(
-    int Id, int AccountId, string Symbol, string Type, double Quantity, double Price,
-    double Fee, string Currency, string Date, string Notes, bool IsStaked, DateTime CreatedAt,
+    int Id, int AccountId, string Symbol, string Type, decimal Quantity, decimal Price,
+    decimal Fee, string Currency, string Date, string Notes, bool IsStaked, DateTime CreatedAt,
     string? AccountName, List<TagDto> Tags);

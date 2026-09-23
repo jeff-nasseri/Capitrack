@@ -13,7 +13,7 @@ namespace Server.Application.Goals.Commands;
 /// <param name="CategoryId">The new category id, or null to keep the current value.</param>
 /// <param name="TagIds">The ids of tags to attach.</param>
 public record UpdateGoalCommand(
-    int Id, string? Title, double? TargetAmount, string? TargetDate, string? Description,
+    int Id, string? Title, decimal? TargetAmount, string? TargetDate, string? Description,
     bool? Achieved, int? CategoryId, List<int>? TagIds) : IRequest<GoalDto>;
 
 /// <summary>Handles <see cref="UpdateGoalCommand"/>.</summary>

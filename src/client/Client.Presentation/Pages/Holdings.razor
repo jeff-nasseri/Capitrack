@@ -37,7 +37,8 @@
     private bool _loading = true;
     private string _query = "";
     private string _base = "USD";
-    private double _totVal, _totGain, _gp;
+    private decimal _totVal, _totGain;
+    private double _gp;
     private int _winners;
 
     protected override async Task OnInitializedAsync()
@@ -72,7 +73,7 @@
             var cb = h.Quantity * (h.AvgCost ?? 0);
             h.Price = price; h.Name = p?.Name ?? h.Symbol; h.ChangePercent = p?.ChangePercent ?? 0;
             h.MarketValue = mv; h.CostBasis = cb; h.Gain = mv - cb;
-            h.GainPct = cb > 0 ? (mv - cb) / cb * 100 : 0; h.Currency = p?.Currency ?? "USD";
+            h.GainPct = cb > 0 ? (double)((mv - cb) / cb * 100) : 0; h.Currency = p?.Currency ?? "USD";
         }
 
         _holdings = all.OrderByDescending(h => h.MarketValue).ToList();
@@ -82,7 +83,7 @@
         _totVal = _holdings.Sum(h => h.MarketValue);
         _totGain = _holdings.Sum(h => h.Gain);
         var cost = _totVal - _totGain;
-        _gp = cost > 0 ? _totGain / cost * 100 : 0;
+        _gp = cost > 0 ? (double)(_totGain / cost * 100) : 0;
         _winners = _holdings.Count(h => h.Gain >= 0);
 
         ApplyFilter();

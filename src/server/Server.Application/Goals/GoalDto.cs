@@ -14,5 +14,5 @@ namespace Server.Application.Goals;
 /// <param name="UpdatedAt">When the goal was last updated.</param>
 /// <param name="Tags">The tags attached to the goal.</param>
 public record GoalDto(
-    int Id, string Title, double TargetAmount, string TargetDate, string Description,
+    int Id, string Title, decimal TargetAmount, string TargetDate, string Description,
     int Achieved, int? CategoryId, DateTime CreatedAt, DateTime UpdatedAt, List<TagDto> Tags);

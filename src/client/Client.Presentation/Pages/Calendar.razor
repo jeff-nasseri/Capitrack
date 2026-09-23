@@ -164,7 +164,7 @@
                     </div>
                     @if (w is not null)
                     {
-                        var gainPct = w.TotalCost > 0 ? (w.TotalWealth - w.TotalCost) / w.TotalCost * 100 : 0;
+                        var gainPct = w.TotalCost > 0 ? (double)((w.TotalWealth - w.TotalCost) / w.TotalCost * 100) : 0;
                         var pos = w.TotalWealth - w.TotalCost >= 0;
                         <div style="padding:8px 10px;border-bottom:1px solid var(--hairline);">
                             <div class="sub" style="font-size:0.6rem;font-weight:700;letter-spacing:0.05em;">WEALTH</div>

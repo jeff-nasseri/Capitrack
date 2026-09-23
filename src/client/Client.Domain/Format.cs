@@ -79,6 +79,36 @@ public static class Format
         return v.ToString("F0", Inv);
     }
 
+    // ---- decimal overloads: quantities and money are exact decimals; rounding happens only here, for display ----
+
+    public static string Money(decimal? amount, string? currency = "USD") => Money(amount, currency, 2);
+
+    public static string Money(decimal? amount, string? currency, int decimals)
+    {
+        if (amount is null) return "--";
+        var v = amount.Value;
+        var sign = v < 0 ? "-" : "";
+        return sign + Sym(currency) + Math.Abs(v).ToString("N" + decimals, Inv);
+    }
+
+    public static string Signed(decimal n, string? currency = "USD", int decimals = 2)
+        => (n >= 0 ? "+" : "-") + Sym(currency) + Math.Abs(n).ToString("N" + decimals, Inv);
+
+    public static string Num(decimal n, int decimals = 2) => n.ToString("N" + decimals, Inv);
+
+    /// <summary>
+    /// A quantity shown exactly: whole numbers without decimals, fractions with every significant
+    /// digit (up to 18, trailing zeros trimmed) — so 0.000000001 SOL never collapses to "0.0000".
+    /// </summary>
+    public static string Shares(decimal n) =>
+        n % 1 == 0 ? n.ToString("N0", Inv) : n.ToString("#,##0.##################", Inv);
+
+    public static string CompactMoney(decimal n, string? currency = null) => CompactMoney((double)n, currency);
+
+    public static string Number(decimal? n) => n is null ? "--" : Shares(n.Value);
+
+    public static string Compact(decimal? n) => Compact(n is null ? null : (double)n.Value);
+
     public static string Date(string? d)
     {
         if (string.IsNullOrEmpty(d)) return "--";

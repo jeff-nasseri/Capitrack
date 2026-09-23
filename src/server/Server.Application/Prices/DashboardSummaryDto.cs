@@ -9,5 +9,5 @@ namespace Server.Application.Prices;
 /// <param name="Accounts">The per-account roll-ups.</param>
 /// <param name="HoldingsCount">The total number of distinct holdings.</param>
 public record DashboardSummaryDto(
-    double TotalWealth, double TotalCost, double TotalGain, double TotalGainPercent,
+    decimal TotalWealth, decimal TotalCost, decimal TotalGain, decimal TotalGainPercent,
     string BaseCurrency, List<AccountSummaryDto> Accounts, int HoldingsCount);

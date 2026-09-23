@@ -74,7 +74,7 @@
 @code {
     private List<GoalDto> _goals = [];
     private List<TagDto> _tags = [];
-    private double _wealth;
+    private decimal _wealth;
     private string _base = "EUR";
     private bool _loading = true;
 
@@ -98,7 +98,7 @@
         _loading = false;
     }
 
-    private double Progress(GoalDto g) => g.TargetAmount > 0 ? Math.Min(100, _wealth / g.TargetAmount * 100) : 0;
+    private double Progress(GoalDto g) => g.TargetAmount > 0 ? (double)Math.Min(100, _wealth / g.TargetAmount * 100) : 0;
 
     // When the goal has a tag colour, tint the bar with a shade→colour gradient; otherwise keep the default .bar gradient.
     private static string BarFill(GoalDto g, double progress)

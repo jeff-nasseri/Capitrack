@@ -9,5 +9,5 @@ namespace Server.Application.Accounts;
 /// <param name="FirstTransaction">The date of the earliest contributing transaction.</param>
 /// <param name="LastTransaction">The date of the latest contributing transaction.</param>
 public record HoldingDto(
-    string Symbol, double Quantity, double? AvgCost, double TotalCost,
+    string Symbol, decimal Quantity, decimal? AvgCost, decimal TotalCost,
     int TransactionCount, string? FirstTransaction, string? LastTransaction);

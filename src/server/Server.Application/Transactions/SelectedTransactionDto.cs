@@ -11,5 +11,5 @@ namespace Server.Application.Transactions;
 /// <param name="Notes">Optional free-text notes.</param>
 /// <param name="IsStaked">Whether this transaction represents staked crypto.</param>
 public record SelectedTransactionDto(
-    string Symbol, string Type, double Quantity, double Price, double Fee,
+    string Symbol, string Type, decimal Quantity, decimal Price, decimal Fee,
     string Currency, string Date, string? Notes, bool IsStaked);

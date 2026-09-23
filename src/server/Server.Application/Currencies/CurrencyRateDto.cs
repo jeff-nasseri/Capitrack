@@ -6,4 +6,4 @@ namespace Server.Application.Currencies;
 /// <param name="ToCurrency">The target currency code.</param>
 /// <param name="Rate">The conversion rate.</param>
 /// <param name="UpdatedAt">When the rate was last updated.</param>
-public record CurrencyRateDto(int Id, string FromCurrency, string ToCurrency, double Rate, DateTime UpdatedAt);
+public record CurrencyRateDto(int Id, string FromCurrency, string ToCurrency, decimal Rate, DateTime UpdatedAt);

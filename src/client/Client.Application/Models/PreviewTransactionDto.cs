@@ -6,9 +6,9 @@ public class PreviewTransactionDto
     public int Index { get; set; }
     public string Symbol { get; set; } = "";
     public string Type { get; set; } = "buy";
-    public double Quantity { get; set; }
-    public double Price { get; set; }
-    public double Fee { get; set; }
+    public decimal Quantity { get; set; }
+    public decimal Price { get; set; }
+    public decimal Fee { get; set; }
     public string Currency { get; set; } = "EUR";
     public string Date { get; set; } = "";
     public string Notes { get; set; } = "";

@@ -7,7 +7,7 @@ public sealed class Goal : AggregateRoot<int>
     public string Title { get; private set; } = "";
 
     /// <summary>The target amount to reach.</summary>
-    public double TargetAmount { get; private set; }
+    public decimal TargetAmount { get; private set; }
 
     /// <summary>The date by which the goal should be met.</summary>
     public TradeDate TargetDate { get; private set; } = default!;
@@ -35,7 +35,7 @@ public sealed class Goal : AggregateRoot<int>
     private Goal() { }
 
     /// <summary>Creates a new goal, requiring a non-empty title.</summary>
-    public static Goal Create(string? title, double targetAmount, TradeDate targetDate,
+    public static Goal Create(string? title, decimal targetAmount, TradeDate targetDate,
                               string? description, bool achieved, int? categoryId)
     {
         if (string.IsNullOrWhiteSpace(title))
@@ -52,7 +52,7 @@ public sealed class Goal : AggregateRoot<int>
     }
 
     /// <summary>Updates the goal's editable fields, requiring a non-empty title.</summary>
-    public void Update(string? title, double targetAmount, TradeDate targetDate,
+    public void Update(string? title, decimal targetAmount, TradeDate targetDate,
                        string? description, bool achieved, int? categoryId)
     {
         if (string.IsNullOrWhiteSpace(title))

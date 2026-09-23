@@ -17,9 +17,9 @@ public sealed class WealthService(CapitrackDbContext db, IPriceService prices, I
     private static string Today() => DateTime.UtcNow.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
     private static string DaysAgo(int days) => DateTime.UtcNow.AddDays(-days).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
-    private async Task<Dictionary<string, double>> RatesAsync()
+    private async Task<Dictionary<string, decimal>> RatesAsync()
     {
-        var dict = new Dictionary<string, double>();
+        var dict = new Dictionary<string, decimal>();
         foreach (var r in await db.CurrencyRates.ToListAsync())
             dict[$"{r.FromCurrency.Value}_{r.ToCurrency.Value}"] = r.Rate;
         return dict;
@@ -50,22 +50,22 @@ public sealed class WealthService(CapitrackDbContext db, IPriceService prices, I
         var baseCurrency = await BaseCurrencyAsync();
 
         var perAccount = new Dictionary<int, AccountAccum>();
-        double totalWealth = 0, totalCost = 0;
+        decimal totalWealth = 0, totalCost = 0;
 
         foreach (var h in holdings)
         {
             var price = priceMap.TryGetValue(h.Symbol.Value, out var p) ? p : new QuoteDto { Price = 0, Currency = "USD" };
-            double marketValue = h.Quantity * price.Price;
-            double costBasis = h.Quantity * h.AvgCost;
+            decimal marketValue = h.Quantity * price.Price;
+            decimal costBasis = h.Quantity * h.AvgCost;
 
             var priceCurrency = string.IsNullOrEmpty(price.Currency) ? "USD" : price.Currency;
             if (priceCurrency != baseCurrency)
-                marketValue *= rates.GetValueOrDefault($"{priceCurrency}_{baseCurrency}", 1);
+                marketValue *= rates.GetValueOrDefault($"{priceCurrency}_{baseCurrency}", 1m);
 
             var account = accounts.GetValueOrDefault(h.AccountId);
             var accountCurrency = account?.Currency.Value ?? "";
             if (!string.IsNullOrEmpty(accountCurrency) && accountCurrency != baseCurrency)
-                costBasis *= rates.GetValueOrDefault($"{accountCurrency}_{baseCurrency}", 1);
+                costBasis *= rates.GetValueOrDefault($"{accountCurrency}_{baseCurrency}", 1m);
 
             if (!perAccount.TryGetValue(h.AccountId, out var acc))
                 perAccount[h.AccountId] = acc = new AccountAccum { AccountId = h.AccountId, AccountName = account?.Name ?? "" };
@@ -98,7 +98,7 @@ public sealed class WealthService(CapitrackDbContext db, IPriceService prices, I
     private static bool IsCashAccount(IReadOnlyDictionary<int, Account> accounts, int accountId) =>
         accounts.TryGetValue(accountId, out var a) && a.Type.IsCash;
 
-    private readonly record struct CashAccountValue(int AccountId, string AccountName, double Value);
+    private readonly record struct CashAccountValue(int AccountId, string AccountName, decimal Value);
 
     /// <summary>
     /// Values each cash/savings account at balance × FX(accountCurrency→base).
@@ -109,20 +109,20 @@ public sealed class WealthService(CapitrackDbContext db, IPriceService prices, I
         IEnumerable<Transaction> txs,
         IReadOnlyDictionary<int, Account> accounts,
         string baseCurrency,
-        IReadOnlyDictionary<string, double> rates)
+        IReadOnlyDictionary<string, decimal> rates)
     {
         foreach (var g in txs.Where(t => IsCashAccount(accounts, t.AccountId)).GroupBy(t => t.AccountId))
         {
             var account = accounts.GetValueOrDefault(g.Key);
-            double balance = g.Sum(t =>
+            decimal balance = g.Sum(t =>
                 t.Type.IncreasesQuantity ? t.Quantity.Value * t.Price
                 : t.Type.DecreasesQuantity ? -(t.Quantity.Value * t.Price)
                 : 0);
 
-            double value = balance;
+            decimal value = balance;
             var accountCurrency = account?.Currency.Value ?? "";
             if (!string.IsNullOrEmpty(accountCurrency) && accountCurrency != baseCurrency)
-                value *= rates.GetValueOrDefault($"{accountCurrency}_{baseCurrency}", 1);
+                value *= rates.GetValueOrDefault($"{accountCurrency}_{baseCurrency}", 1m);
 
             yield return new CashAccountValue(g.Key, account?.Name ?? "", value);
         }
@@ -131,7 +131,7 @@ public sealed class WealthService(CapitrackDbContext db, IPriceService prices, I
     private class AccountAccum
     {
         public int AccountId; public string AccountName = "";
-        public double MarketValue; public double CostBasis; public int HoldingsCount;
+        public decimal MarketValue; public decimal CostBasis; public int HoldingsCount;
     }
 
     // ---- Portfolio value history (transaction replay + historical prices, no FX) ----
@@ -153,27 +153,27 @@ public sealed class WealthService(CapitrackDbContext db, IPriceService prices, I
         var transactions = await q.OrderBy(t => t.Date).ToListAsync();
         if (transactions.Count == 0) return [];
 
-        var holdingMap = new Dictionary<string, double>();
+        var holdingMap = new Dictionary<string, decimal>();
         foreach (var tx in transactions)
         {
             holdingMap.TryAdd(tx.Symbol.Value, 0);
             if (tx.Type.CountsAsHistoryAdd) holdingMap[tx.Symbol.Value] += tx.Quantity.Value;
             else if (tx.Type.CountsAsHistorySub && !tx.IsStaked) holdingMap[tx.Symbol.Value] -= tx.Quantity.Value;
         }
-        var activeSymbols = holdingMap.Where(kv => kv.Value > 0.00000001).Select(kv => kv.Key).ToList();
+        var activeSymbols = holdingMap.Where(kv => kv.Value > 0.00000001m).Select(kv => kv.Key).ToList();
         if (activeSymbols.Count == 0) return [];
 
         string interval = days <= 30 ? "1d" : "1wk";
         var start = DateTime.ParseExact(startDate, "yyyy-MM-dd", CultureInfo.InvariantCulture);
-        var priceHistories = new Dictionary<string, Dictionary<string, double>>();
+        var priceHistories = new Dictionary<string, Dictionary<string, decimal>>();
         foreach (var symbol in activeSymbols)
         {
-            var map = new Dictionary<string, double>();
+            var map = new Dictionary<string, decimal>();
             try
             {
                 var chart = await yahoo.ChartAsync(symbol, start, interval);
                 foreach (var pt in chart)
-                    if (pt.Close is double cl)
+                    if (pt.Close is decimal cl)
                         map[pt.Date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)] = cl;
             }
             catch { /* fall through to cached fallback */ }
@@ -192,7 +192,7 @@ public sealed class WealthService(CapitrackDbContext db, IPriceService prices, I
         if (allDates.Count == 0) return [];
 
         var history = new List<PortfolioHistoryPointDto>();
-        var running = new Dictionary<string, double>();
+        var running = new Dictionary<string, decimal>();
         int txIndex = 0;
         foreach (var dateStr in allDates)
         {
@@ -205,31 +205,31 @@ public sealed class WealthService(CapitrackDbContext db, IPriceService prices, I
                 txIndex++;
             }
 
-            double totalValue = 0;
+            decimal totalValue = 0;
             foreach (var (symbol, qty) in running)
             {
-                if (qty <= 0.00000001) continue;
+                if (qty <= 0.00000001m) continue;
                 var ph = priceHistories.GetValueOrDefault(symbol) ?? [];
-                double price;
+                decimal price;
                 if (ph.TryGetValue(dateStr, out var exact)) price = exact;
                 else
                 {
                     var earlier = ph.Keys.Where(k => k != "fallback" && string.CompareOrdinal(k, dateStr) <= 0)
                                          .OrderBy(k => k, StringComparer.Ordinal).LastOrDefault();
-                    price = earlier != null ? ph[earlier] : ph.GetValueOrDefault("fallback", 0);
+                    price = earlier != null ? ph[earlier] : ph.GetValueOrDefault("fallback", 0m);
                 }
                 totalValue += qty * price;
             }
 
-            double totalCost = transactions
+            decimal totalCost = transactions
                 .Where(t => string.CompareOrdinal(t.Date.Value, dateStr) <= 0 && t.Type.IncreasesQuantity)
                 .Sum(t => t.Quantity.Value * t.Price);
 
             history.Add(new PortfolioHistoryPointDto(
                 dateStr,
-                Math.Round(totalValue * 100) / 100,
-                Math.Round(totalCost * 100) / 100,
-                Math.Round((totalValue - totalCost) * 100) / 100));
+                Math.Round(totalValue, 2),
+                Math.Round(totalCost, 2),
+                Math.Round(totalValue - totalCost, 2)));
         }
         return history;
     }
@@ -254,20 +254,20 @@ public sealed class WealthService(CapitrackDbContext db, IPriceService prices, I
         var rates = await RatesAsync();
         var baseCurrency = await BaseCurrencyAsync();
 
-        double totalWealth = 0, totalCost = 0;
+        decimal totalWealth = 0, totalCost = 0;
         var details = new Dictionary<int, AccountAccum>();
         foreach (var h in holdings)
         {
             var price = priceMap.GetValueOrDefault(h.Symbol.Value) ?? new QuoteDto { Price = 0, Currency = "USD" };
-            double marketValue = h.Quantity * price.Price;
-            double costBasis = h.Quantity * h.AvgCost;
+            decimal marketValue = h.Quantity * price.Price;
+            decimal costBasis = h.Quantity * h.AvgCost;
             var priceCurrency = string.IsNullOrEmpty(price.Currency) ? "USD" : price.Currency;
             if (priceCurrency != baseCurrency)
-                marketValue *= rates.GetValueOrDefault($"{priceCurrency}_{baseCurrency}", 1);
+                marketValue *= rates.GetValueOrDefault($"{priceCurrency}_{baseCurrency}", 1m);
             var account = accounts.GetValueOrDefault(h.AccountId);
             var accountCurrency = account?.Currency.Value ?? "";
             if (!string.IsNullOrEmpty(accountCurrency) && accountCurrency != baseCurrency)
-                costBasis *= rates.GetValueOrDefault($"{accountCurrency}_{baseCurrency}", 1);
+                costBasis *= rates.GetValueOrDefault($"{accountCurrency}_{baseCurrency}", 1m);
 
             if (!details.TryGetValue(h.AccountId, out var acc))
                 details[h.AccountId] = acc = new AccountAccum { AccountId = h.AccountId, AccountName = account?.Name ?? "" };

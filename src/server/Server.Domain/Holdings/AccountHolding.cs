@@ -5,4 +5,4 @@ namespace Server.Domain.Holdings;
 /// <param name="AccountId">The owning account's identifier.</param>
 /// <param name="Quantity">The net quantity held in the account.</param>
 /// <param name="AvgCost">The weighted average buy cost.</param>
-public sealed record AccountHolding(Symbol Symbol, int AccountId, double Quantity, double AvgCost);
+public sealed record AccountHolding(Symbol Symbol, int AccountId, decimal Quantity, decimal AvgCost);

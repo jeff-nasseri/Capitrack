@@ -15,7 +15,7 @@
             var cost = sa?.CostBasis ?? 0;
             var holdings = sa?.HoldingsCount ?? 0;
             var gain = value - cost;
-            var gp = cost > 0 ? gain / cost * 100 : 0;
+            var gp = cost > 0 ? (double)(gain / cost * 100) : 0;
             <div class="card card-pad card-hover" @onclick="() => Open(a.Id)">
                 <div class="row-between" style="align-items:flex-start;">
                     <div class="flex gap-3">
@@ -35,7 +35,7 @@
                             <span class="delta @(gp >= 0 ? "up" : "down")" style="font-size:0.82rem;">@Format.Pct(gp, 1)</span>
                         </div>
                     </div>
-                    <Sparkline Data="Series.AccountSeries(a.Id, cost, value)" Up="@(gp >= 0)" W="92" H="36" />
+                    <Sparkline Data="Series.AccountSeries(a.Id, (double)cost, (double)value)" Up="@(gp >= 0)" W="92" H="36" />
                 </div>
                 <div class="flex row-between mt-4" style="padding-top:12px;border-top:1px solid var(--hairline);">
                     <span class="sub">Cost basis @Format.Money(cost, a.Currency, 0)</span>

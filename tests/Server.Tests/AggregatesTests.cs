@@ -83,8 +83,8 @@ public class AggregatesTests
     [Fact]
     public void CurrencyRate_set_rate_updates_value()
     {
-        var rate = CurrencyRate.Create(CurrencyCode.Usd, CurrencyCode.Eur, 0.9);
-        rate.SetRate(0.95);
-        rate.Rate.Should().Be(0.95);
+        var rate = CurrencyRate.Create(CurrencyCode.Usd, CurrencyCode.Eur, 0.9m);
+        rate.SetRate(0.95m);
+        rate.Rate.Should().Be(0.95m);
     }
 }

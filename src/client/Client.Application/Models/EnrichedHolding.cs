@@ -5,12 +5,12 @@ public class EnrichedHolding : HoldingDto
 {
     public int AccountId { get; set; }
     public string AccountCurrency { get; set; } = "USD";
-    public double Price { get; set; }
+    public decimal Price { get; set; }
     public string Name { get; set; } = "";
     public double ChangePercent { get; set; }
-    public double MarketValue { get; set; }
-    public double CostBasis { get; set; }
-    public double Gain { get; set; }
+    public decimal MarketValue { get; set; }
+    public decimal CostBasis { get; set; }
+    public decimal Gain { get; set; }
     public double GainPct { get; set; }
     public string Currency { get; set; } = "USD";
 }

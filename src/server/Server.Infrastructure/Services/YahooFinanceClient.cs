@@ -71,7 +71,7 @@ public class YahooFinanceClient : IYahooFinanceClient
                         return new QuoteDto
                         {
                             Symbol = symbol,
-                            Price = GetDouble(q, "regularMarketPrice") ?? 0,
+                            Price = GetDecimal(q, "regularMarketPrice") ?? 0,
                             Currency = GetString(q, "currency") ?? "USD",
                             Name = GetString(q, "shortName") ?? GetString(q, "longName") ?? symbol,
                             ChangePercent = GetDouble(q, "regularMarketChangePercent") ?? 0
@@ -94,9 +94,9 @@ public class YahooFinanceClient : IYahooFinanceClient
                 if (result.ValueKind == JsonValueKind.Array && result.GetArrayLength() > 0)
                 {
                     var meta = result[0].GetProperty("meta");
-                    var price = GetDouble(meta, "regularMarketPrice") ?? 0;
-                    var prev = GetDouble(meta, "chartPreviousClose") ?? GetDouble(meta, "previousClose") ?? 0;
-                    var changePct = prev > 0 ? (price - prev) / prev * 100 : 0;
+                    var price = GetDecimal(meta, "regularMarketPrice") ?? 0;
+                    var prev = GetDecimal(meta, "chartPreviousClose") ?? GetDecimal(meta, "previousClose") ?? 0;
+                    var changePct = prev > 0 ? (double)((price - prev) / prev * 100) : 0;
                     return new QuoteDto
                     {
                         Symbol = symbol,
@@ -138,7 +138,7 @@ public class YahooFinanceClient : IYahooFinanceClient
             var date = DateTimeOffset.FromUnixTimeSeconds(ts[i].GetInt64()).UtcDateTime;
             list.Add(new HistoryPointDto(
                 date,
-                Index(closes, i), Index(opens, i), Index(highs, i), Index(lows, i), Index(vols, i)));
+                Index(closes, i), Index(opens, i), Index(highs, i), Index(lows, i), IndexDouble(vols, i)));
         }
         return list;
     }
@@ -164,12 +164,22 @@ public class YahooFinanceClient : IYahooFinanceClient
         return list;
     }
 
-    private static double? Index(JsonElement arr, int i)
+    private static decimal? Index(JsonElement arr, int i)
+    {
+        if (arr.ValueKind != JsonValueKind.Array || i >= arr.GetArrayLength()) return null;
+        var el = arr[i];
+        return el.ValueKind == JsonValueKind.Number && el.TryGetDecimal(out var d) ? d : null;
+    }
+
+    private static double? IndexDouble(JsonElement arr, int i)
     {
         if (arr.ValueKind != JsonValueKind.Array || i >= arr.GetArrayLength()) return null;
         var el = arr[i];
         return el.ValueKind == JsonValueKind.Number ? el.GetDouble() : null;
     }
+
+    private static decimal? GetDecimal(JsonElement e, string prop) =>
+        e.TryGetProperty(prop, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetDecimal(out var d) ? d : null;
 
     private static double? GetDouble(JsonElement e, string prop) =>
         e.TryGetProperty(prop, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetDouble() : null;

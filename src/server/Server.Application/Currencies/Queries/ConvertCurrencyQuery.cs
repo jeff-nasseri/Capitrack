@@ -6,7 +6,7 @@ namespace Server.Application.Currencies.Queries;
 /// <summary>The result of a currency conversion.</summary>
 /// <param name="Result">The converted amount.</param>
 /// <param name="Rate">The conversion rate applied.</param>
-public record ConversionResultDto(double Result, double Rate);
+public record ConversionResultDto(decimal Result, decimal Rate);
 
 /// <summary>Converts an amount between two currencies using stored rates.</summary>
 /// <param name="From">The source currency code (required).</param>
@@ -37,13 +37,13 @@ public sealed class ConvertCurrencyQueryHandler(
     {
         logger.LogInformation("Handling {Request}", nameof(ConvertCurrencyQuery));
 
-        var amount = double.TryParse(request.Amount, NumberStyles.Any, CultureInfo.InvariantCulture, out var a) ? a : 0;
+        var amount = decimal.TryParse(request.Amount, NumberStyles.Number, CultureInfo.InvariantCulture, out var a) ? a : 0;
 
         var from = CurrencyCode.Create(request.From);
         var to = CurrencyCode.Create(request.To);
 
         if (from.Value == to.Value)
-            return new ConversionResultDto(amount, 1.0);
+            return new ConversionResultDto(amount, 1m);
 
         var rate = await rates.GetPairAsync(from.Value, to.Value, cancellationToken)
                    ?? throw new NotFoundException($"No rate found for {request.From} to {request.To}");

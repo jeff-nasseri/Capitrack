@@ -16,10 +16,10 @@ public sealed class Transaction : AggregateRoot<int>
     public Quantity Quantity { get; private set; } = Quantity.Zero;
 
     /// <summary>The unit price.</summary>
-    public double Price { get; private set; }
+    public decimal Price { get; private set; }
 
     /// <summary>Any transaction fee.</summary>
-    public double Fee { get; private set; }
+    public decimal Fee { get; private set; }
 
     /// <summary>The transaction currency.</summary>
     public CurrencyCode Currency { get; private set; } = CurrencyCode.Eur;
@@ -45,7 +45,7 @@ public sealed class Transaction : AggregateRoot<int>
 
     /// <summary>Creates a new transaction, requiring a valid owning account.</summary>
     public static Transaction Create(int accountId, Symbol symbol, TransactionType type, Quantity quantity,
-                                     double price, double fee, CurrencyCode currency, TradeDate date, string? notes,
+                                     decimal price, decimal fee, CurrencyCode currency, TradeDate date, string? notes,
                                      bool isStaked = false)
     {
         if (accountId <= 0)
@@ -66,7 +66,7 @@ public sealed class Transaction : AggregateRoot<int>
     }
 
     /// <summary>Updates the transaction's editable fields.</summary>
-    public void Update(Symbol symbol, TransactionType type, Quantity quantity, double price, double fee,
+    public void Update(Symbol symbol, TransactionType type, Quantity quantity, decimal price, decimal fee,
                        CurrencyCode currency, TradeDate date, string? notes, bool isStaked = false)
     {
         Symbol = symbol;

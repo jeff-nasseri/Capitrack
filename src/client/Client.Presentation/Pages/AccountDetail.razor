@@ -99,7 +99,7 @@
             <StatCard Label="Investments" Value="@Format.Money(_invested, _base)" />
             <StatCard Label="Net contribution" Value="@Format.Money(_contribution, _base)" />
             <StatCard Label="Cost basis" Value="@Format.Money(_totalCost, _base)" />
-            <StatCard Label="Cash balance" Value="@Format.Money(0, _base)" />
+            <StatCard Label="Cash balance" Value="@Format.Money(0m, _base)" />
         </div>
 
         <div class="section-title mt-6" style="margin-bottom:12px;">Holdings</div>
@@ -117,7 +117,8 @@
     private List<string> _labels = [];
     private string _base = "USD";
     private string _period = "3m";
-    private double _totalValue, _totalCost, _invested, _contribution, _gain, _gainPct;
+    private decimal _totalValue, _totalCost, _invested, _contribution, _gain;
+    private double _gainPct;
     private List<TagDto> _tags = [];
 
     // Cash-account state (computed client-side; no Yahoo / history calls).
@@ -125,7 +126,7 @@
     private List<TransactionDto> _cashMovements = [];
     private List<double> _cashChart = [];
     private List<string> _cashLabels = [];
-    private double _cashBalance, _cashIn, _cashOut;
+    private decimal _cashBalance, _cashIn, _cashOut;
     private readonly CashFormModel _cash = new();
 
     private RenderFragment Actions => @<text>
@@ -164,7 +165,7 @@
         if (_account is null) return;
         var holdings = await holdingsTask ?? [];
         _transactions = await txTask ?? [];
-        var rates = new Dictionary<string, double>();
+        var rates = new Dictionary<string, decimal>();
         foreach (var r in await ratesTask ?? []) rates[$"{r.FromCurrency}_{r.ToCurrency}"] = r.Rate;
         _base = (await sessionTask)?.BaseCurrency ?? _account.Currency;
 
@@ -185,17 +186,17 @@
         foreach (var h in holdings)
         {
             var p = prices.GetValueOrDefault(h.Symbol);
-            double marketValue = h.Quantity * (p?.Price ?? 0);
-            double costBasis = h.Quantity * (h.AvgCost ?? 0);
+            decimal marketValue = h.Quantity * (p?.Price ?? 0);
+            decimal costBasis = h.Quantity * (h.AvgCost ?? 0);
             var priceCurrency = p?.Currency ?? "USD";
-            if (priceCurrency != _base) marketValue *= rates.GetValueOrDefault($"{priceCurrency}_{_base}", 1);
-            if (_account.Currency != _base) costBasis *= rates.GetValueOrDefault($"{_account.Currency}_{_base}", 1);
+            if (priceCurrency != _base) marketValue *= rates.GetValueOrDefault($"{priceCurrency}_{_base}", 1m);
+            if (_account.Currency != _base) costBasis *= rates.GetValueOrDefault($"{_account.Currency}_{_base}", 1m);
             var gain = marketValue - costBasis;
             enriched.Add(new EnrichedHolding
             {
                 Symbol = h.Symbol, Quantity = h.Quantity, AvgCost = h.AvgCost, Price = p?.Price ?? 0,
                 Name = p?.Name ?? h.Symbol, ChangePercent = p?.ChangePercent ?? 0, MarketValue = marketValue,
-                CostBasis = costBasis, Gain = gain, GainPct = costBasis > 0 ? gain / costBasis * 100 : 0,
+                CostBasis = costBasis, Gain = gain, GainPct = costBasis > 0 ? (double)(gain / costBasis * 100) : 0,
                 Currency = _base, AccountId = Id
             });
             _totalValue += marketValue; _totalCost += costBasis;
@@ -204,14 +205,14 @@
 
         foreach (var tx in _transactions)
         {
-            double txValue = tx.Quantity * tx.Price;
-            if (_account.Currency != _base) txValue *= rates.GetValueOrDefault($"{_account.Currency}_{_base}", 1);
+            decimal txValue = tx.Quantity * tx.Price;
+            if (_account.Currency != _base) txValue *= rates.GetValueOrDefault($"{_account.Currency}_{_base}", 1m);
             if (tx.Type == "buy") { _invested += txValue; _contribution += txValue; }
             if (tx.Type == "sell") { _contribution -= txValue; }
         }
 
         _gain = _totalValue - _totalCost;
-        _gainPct = _totalCost > 0 ? _gain / _totalCost * 100 : 0;
+        _gainPct = _totalCost > 0 ? (double)(_gain / _totalCost * 100) : 0;
         StateHasChanged();
         await LoadChart(_period);
     }
@@ -220,7 +221,7 @@
     // from the account's transactions (deposits = transfer_in/buy, withdrawals = transfer_out/sell).
     private void BuildCash()
     {
-        static double Signed(TransactionDto t) =>
+        static decimal Signed(TransactionDto t) =>
             t.Type is "transfer_in" or "buy" ? t.Quantity * t.Price
             : t.Type is "transfer_out" or "sell" ? -(t.Quantity * t.Price)
             : 0;
@@ -235,14 +236,14 @@
         _cashBalance = _cashIn - _cashOut;
 
         var chrono = _transactions.OrderBy(t => t.Date).ThenBy(t => t.Id).ToList();
-        var running = 0d;
+        var running = 0m;
         _cashChart = [];
         _cashLabels = [];
         var dates = new List<string>();
         foreach (var t in chrono)
         {
             running += Signed(t);
-            _cashChart.Add(running);
+            _cashChart.Add((double)running);
             dates.Add(t.Date);
         }
         // The area chart needs at least two points to render a line.
@@ -254,7 +255,7 @@
     {
         _period = period;
         var data = await Api.GetAsync<List<PortfolioHistoryPointDto>>($"/api/prices/portfolio/history?account_id={Id}&period={period}") ?? [];
-        _chart = data.Select(p => p.Value).ToList();
+        _chart = data.Select(p => (double)p.Value).ToList();
         _labels = BuildLabels(data.Select(p => p.Date).ToList());
         StateHasChanged();
     }

@@ -5,7 +5,7 @@ public class GoalFormModel
 {
     public int? Id { get; set; }
     public string Title { get; set; } = "";
-    public double? TargetAmount { get; set; }
+    public decimal? TargetAmount { get; set; }
     public string TargetDate { get; set; } = "";
     public string Description { get; set; } = "";
     public bool Achieved { get; set; }

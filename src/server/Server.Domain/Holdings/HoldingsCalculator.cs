@@ -8,7 +8,7 @@ namespace Server.Domain.Holdings;
 /// </summary>
 public static class HoldingsCalculator
 {
-    private const double Epsilon = 0.00000001;
+    private const decimal Epsilon = 0.00000001m;
 
     /// <summary>Per-symbol holdings for a set of transactions (one account).</summary>
     public static IReadOnlyList<Holding> ForAccount(IEnumerable<Transaction> transactions)
@@ -16,14 +16,14 @@ public static class HoldingsCalculator
         var result = new List<Holding>();
         foreach (var g in transactions.GroupBy(t => t.Symbol))
         {
-            double buyQty = g.Where(t => t.Type.IncreasesQuantity).Sum(t => t.Quantity.Value);
-            double sellQty = g.Where(t => t.Type.DecreasesQuantity && !t.IsStaked).Sum(t => t.Quantity.Value);
-            double quantity = buyQty - sellQty;
+            decimal buyQty = g.Where(t => t.Type.IncreasesQuantity).Sum(t => t.Quantity.Value);
+            decimal sellQty = g.Where(t => t.Type.DecreasesQuantity && !t.IsStaked).Sum(t => t.Quantity.Value);
+            decimal quantity = buyQty - sellQty;
             if (quantity <= Epsilon) continue;
 
-            double buyValue = g.Where(t => t.Type.IncreasesQuantity).Sum(t => t.Quantity.Value * t.Price);
-            double? avgCost = buyQty != 0 ? buyValue / buyQty : null;
-            double totalCost = g.Sum(t =>
+            decimal buyValue = g.Where(t => t.Type.IncreasesQuantity).Sum(t => t.Quantity.Value * t.Price);
+            decimal? avgCost = buyQty != 0 ? buyValue / buyQty : null;
+            decimal totalCost = g.Sum(t =>
                 t.Type == TransactionType.Buy ? t.Quantity.Value * t.Price + t.Fee
                 : t.Type == TransactionType.Sell ? -(t.Quantity.Value * t.Price - t.Fee)
                 : 0);
@@ -43,13 +43,13 @@ public static class HoldingsCalculator
         var result = new List<AccountHolding>();
         foreach (var g in transactions.GroupBy(t => new { t.Symbol, t.AccountId }))
         {
-            double buyQty = g.Where(t => t.Type.IncreasesQuantity).Sum(t => t.Quantity.Value);
-            double sellQty = g.Where(t => t.Type.DecreasesQuantity && !t.IsStaked).Sum(t => t.Quantity.Value);
-            double quantity = buyQty - sellQty;
+            decimal buyQty = g.Where(t => t.Type.IncreasesQuantity).Sum(t => t.Quantity.Value);
+            decimal sellQty = g.Where(t => t.Type.DecreasesQuantity && !t.IsStaked).Sum(t => t.Quantity.Value);
+            decimal quantity = buyQty - sellQty;
             if (quantity <= Epsilon) continue;
 
-            double buyValue = g.Where(t => t.Type.IncreasesQuantity).Sum(t => t.Quantity.Value * t.Price);
-            double avgCost = buyQty != 0 ? buyValue / buyQty : 0;
+            decimal buyValue = g.Where(t => t.Type.IncreasesQuantity).Sum(t => t.Quantity.Value * t.Price);
+            decimal avgCost = buyQty != 0 ? buyValue / buyQty : 0;
             result.Add(new AccountHolding(g.Key.Symbol, g.Key.AccountId, quantity, avgCost));
         }
         return result;

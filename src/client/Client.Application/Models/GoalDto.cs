@@ -5,7 +5,7 @@ public class GoalDto
 {
     public int Id { get; set; }
     public string Title { get; set; } = "";
-    public double TargetAmount { get; set; }
+    public decimal TargetAmount { get; set; }
     public string TargetDate { get; set; } = "";
     public string Description { get; set; } = "";
     public int Achieved { get; set; }
