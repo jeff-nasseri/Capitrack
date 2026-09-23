@@ -77,7 +77,13 @@ def main(argv: list[str]) -> int:
 
     for path in paths:
         with open(path, encoding="utf-8-sig", newline="") as fh:
-            rows = list(csv.DictReader(fh))
+            header = fh.readline()
+            fh.seek(0)
+            # European exports use ';' (their decimal separator is ',')
+            delimiter = max([",", ";", "\t"], key=header.count)
+            rows = list(csv.DictReader(fh, delimiter=delimiter))
+            if rows and rows[0].get("Timestamp") is None and "﻿Timestamp" in rows[0]:
+                rows = [{k.lstrip("﻿"): v for k, v in r.items()} for r in rows]
         report = {"file": path.replace("\\", "/").split("/")[-1], "rows_read": len(rows), "counted": 0, "excluded": defaultdict(int)}
 
         by_tx: dict[str, list[dict]] = defaultdict(list)
