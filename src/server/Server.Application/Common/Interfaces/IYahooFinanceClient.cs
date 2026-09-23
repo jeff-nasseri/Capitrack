@@ -6,6 +6,9 @@ public interface IYahooFinanceClient
     /// <summary>Fetches a live quote for a symbol, or null when unavailable.</summary>
     Task<QuoteDto?> QuoteAsync(string symbol);
 
+    /// <summary>Live quotes for several symbols in one v7 request (upper-case symbol → quote); unknown symbols are left out.</summary>
+    Task<Dictionary<string, QuoteDto>> QuotesAsync(IReadOnlyList<string> symbols);
+
     /// <summary>Fetches a price history series for a symbol from <paramref name="period1"/> at the given interval.</summary>
     Task<List<HistoryPointDto>> ChartAsync(string symbol, DateTime period1, string interval);
 

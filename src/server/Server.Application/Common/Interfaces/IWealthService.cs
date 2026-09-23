@@ -14,4 +14,10 @@ public interface IWealthService
 
     /// <summary>Returns stored daily wealth snapshots between two dates.</summary>
     Task<List<DailyWealthDto>> GetDailyWealthAsync(string start, string end);
+
+    /// <summary>
+    /// Tops up the cached daily closes and exchange rates the value history reads, so charts load from the
+    /// cache instead of waiting on providers. Only the days not cached yet are fetched.
+    /// </summary>
+    Task WarmPriceCacheAsync(CancellationToken ct = default);
 }

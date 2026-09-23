@@ -62,9 +62,8 @@ public sealed class WealthService(CapitrackDbContext db, IPriceService prices, I
         var holdings = HoldingsCalculator.ByAccount(txs.Where(t => !IsCashAccount(accounts, t.AccountId)));
 
         var symbols = holdings.Select(h => h.Symbol.Value).Distinct().ToList();
-        var priceMap = new Dictionary<string, QuoteDto>();
-        foreach (var s in symbols)
-            priceMap[s] = await prices.GetQuoteAsync(s) ?? new QuoteDto { Symbol = s, Price = 0, Currency = "USD" };
+        var quotes = await prices.GetQuotesAsync(symbols);
+        var priceMap = symbols.ToDictionary(s => s, s => quotes.GetValueOrDefault(s.ToUpperInvariant()) ?? new QuoteDto { Symbol = s, Price = 0, Currency = "USD" });
 
         var baseCurrency = await BaseCurrencyAsync();
         var rates = await RatesAsync(
@@ -255,6 +254,26 @@ public sealed class WealthService(CapitrackDbContext db, IPriceService prices, I
                 Math.Round(totalValue - totalCost, 2)));
         }
         return history;
+    }
+
+    public async Task WarmPriceCacheAsync(CancellationToken ct = default)
+    {
+        var txs = await db.Transactions.AsNoTracking().ToListAsync(ct);
+        if (txs.Count == 0) return;
+        var accounts = await db.Accounts.AsNoTracking().ToDictionaryAsync(a => a.Id, ct);
+        var baseCurrency = await BaseCurrencyAsync();
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        // the widest range a history request asks for: a week before the first transaction (see PortfolioHistoryAsync)
+        var from = txs.Min(t => ParseDay(t.Date.Value)).AddDays(-7);
+
+        var currencies = new HashSet<string>(CashCurrencies(accounts).OfType<string>());
+        foreach (var symbol in txs.Where(t => !IsCashAccount(accounts, t.AccountId)).Select(t => t.Symbol.Value).Distinct())
+        {
+            if (await market.DailyAsync(symbol, from, today, null, ct) is { } series) currencies.Add(series.Currency);
+            currencies.UnionWith(txs.Where(t => t.Symbol.Value == symbol).Select(t => t.Currency.Value));
+        }
+        foreach (var currency in currencies.Where(c => !string.IsNullOrEmpty(c) && c != baseCurrency))
+            await market.DailyAsync($"{currency}{baseCurrency}=X", from.AddDays(-10), today, null, ct);
     }
 
     private static decimal QuantityDelta(Transaction tx) =>

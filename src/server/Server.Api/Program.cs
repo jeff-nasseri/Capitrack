@@ -96,6 +96,7 @@ builder.Services.AddDataProtection()
 
 // Prune old sign-in audit rows on a schedule so the attempts table can't grow unbounded.
 builder.Services.AddHostedService<LoginAttemptRetentionService>();
+builder.Services.AddHostedService<PriceCacheWarmupService>();
 
 // Behind nginx — honour X-Forwarded-* headers, but ONLY when the immediate peer is a private-network
 // proxy. Trusting every proxy (KnownIPNetworks.Clear()) would let anyone who could reach the API port

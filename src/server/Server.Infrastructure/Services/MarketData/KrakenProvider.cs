@@ -49,10 +49,59 @@ public sealed class KrakenProvider(HttpClient http, TimeProvider? clock = null, 
         var (pair, quote) = Pair(symbol);
         using var doc = await GetAsync($"Ticker?pair={pair}", ct);
         var ticker = Result(doc);
-        if (ticker is null) return null;
-        var last = JsonNumbers.ToDecimal(ticker.Value.GetProperty("c")[0]) ?? 0;
-        var open = JsonNumbers.ToDecimal(ticker.Value.GetProperty("o")) ?? 0;
-        return new QuoteDto { Symbol = symbol, Price = last, Currency = quote, Name = symbol, ChangePercent = open > 0 ? (double)((last - open) / open * 100) : 0 };
+        return ticker is null ? null : ToQuote(symbol, quote, ticker.Value);
+    }
+
+    /// <summary>
+    /// One Ticker request for every listed pair. Kraken rejects the whole request if one pair is unknown and
+    /// answers under its own pair names (XBTUSD → XXBTZUSD), so pairs are checked and mapped via AssetPairs.
+    /// </summary>
+    public async Task<IReadOnlyDictionary<string, QuoteDto>> QuotesAsync(IReadOnlyList<string> symbols, CancellationToken ct = default)
+    {
+        var quotes = new Dictionary<string, QuoteDto>();
+        var wanted = symbols.Where(s => Supports(s, AssetClass.Crypto)).Select(s => (Symbol: s, Pair: Pair(s))).ToList();
+        if (wanted.Count == 0) return quotes;
+        var pairs = await PairsAsync(ct);
+        var listed = wanted.Where(w => pairs.ContainsKey(w.Pair.Pair)).ToList();
+        if (listed.Count == 0) return quotes;
+
+        using var doc = await GetAsync($"Ticker?pair={string.Join(',', listed.Select(w => w.Pair.Pair).Distinct())}", ct);
+        if (doc.RootElement.TryGetProperty("error", out var errors) && errors.GetArrayLength() > 0)
+            throw new HttpRequestException($"Kraken: {errors[0].GetString()}");
+        var result = doc.RootElement.GetProperty("result");
+        foreach (var w in listed)
+            if (result.TryGetProperty(pairs[w.Pair.Pair], out var ticker) && ToQuote(w.Symbol, w.Pair.Quote, ticker) is { } quote)
+                quotes[w.Symbol] = quote;
+        return quotes;
+    }
+
+    private static QuoteDto? ToQuote(string symbol, string currency, JsonElement ticker)
+    {
+        var last = JsonNumbers.ToDecimal(ticker.GetProperty("c")[0]) ?? 0;
+        if (last <= 0) return null;
+        var open = JsonNumbers.ToDecimal(ticker.GetProperty("o")) ?? 0; // today's opening price (00:00 UTC)
+        return new QuoteDto { Symbol = symbol, Price = last, Currency = currency, Name = symbol, ChangePercent = open > 0 ? (double)((last - open) / open * 100) : 0 };
+    }
+
+    private readonly SemaphoreSlim _pairsLock = new(1, 1);
+    private (DateTime At, Dictionary<string, string> Keys)? _pairs;
+
+    /// <summary>Kraken's tradable pairs: altname (XBTUSD) → the name its answers use (XXBTZUSD). Refreshed daily.</summary>
+    private async Task<Dictionary<string, string>> PairsAsync(CancellationToken ct)
+    {
+        await _pairsLock.WaitAsync(ct);
+        try
+        {
+            var now = (clock ?? TimeProvider.System).GetUtcNow().UtcDateTime;
+            if (_pairs is { } cached && cached.At > now.AddDays(-1)) return cached.Keys;
+            using var doc = await GetAsync("AssetPairs", ct);
+            var keys = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var pair in doc.RootElement.GetProperty("result").EnumerateObject())
+                if (pair.Value.TryGetProperty("altname", out var alt) && alt.GetString() is { } name) keys[name] = pair.Name;
+            _pairs = (now, keys);
+            return keys;
+        }
+        finally { _pairsLock.Release(); }
     }
 
     private sealed record Candle(DateTime Open, decimal Close);

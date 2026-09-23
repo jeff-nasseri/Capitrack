@@ -79,9 +79,29 @@ public sealed class CoinGeckoProvider : IPriceProvider
         if (!Supports(symbol, AssetClass.Crypto)) return null;
         var (id, vs) = Coin(symbol);
         using var doc = await GetAsync($"simple/price?ids={id}&vs_currencies={vs}&include_24hr_change=true", ct);
-        if (!doc.RootElement.TryGetProperty(id, out var coin) || !coin.TryGetProperty(vs, out var price)) return null;
+        return ToQuote(doc.RootElement, symbol, id, vs);
+    }
+
+    /// <summary>Every coin in one simple/price request.</summary>
+    public async Task<IReadOnlyDictionary<string, QuoteDto>> QuotesAsync(IReadOnlyList<string> symbols, CancellationToken ct = default)
+    {
+        var quotes = new Dictionary<string, QuoteDto>();
+        var wanted = symbols.Where(s => Supports(s, AssetClass.Crypto)).Select(s => (Symbol: s, Coin: Coin(s))).ToList();
+        if (wanted.Count == 0) return quotes;
+        var ids = string.Join(',', wanted.Select(w => w.Coin.Id).Distinct());
+        var vs = string.Join(',', wanted.Select(w => w.Coin.Vs).Distinct());
+        using var doc = await GetAsync($"simple/price?ids={ids}&vs_currencies={vs}&include_24hr_change=true", ct);
+        foreach (var w in wanted)
+            if (ToQuote(doc.RootElement, w.Symbol, w.Coin.Id, w.Coin.Vs) is { } quote) quotes[w.Symbol] = quote;
+        return quotes;
+    }
+
+    private static QuoteDto? ToQuote(JsonElement root, string symbol, string id, string vs)
+    {
+        if (!root.TryGetProperty(id, out var coin) || !coin.TryGetProperty(vs, out var price) || JsonNumbers.ToDecimal(price) is not { } value || value <= 0)
+            return null;
         var change = coin.TryGetProperty($"{vs}_24h_change", out var c) && c.ValueKind == JsonValueKind.Number ? c.GetDouble() : 0;
-        return new QuoteDto { Symbol = symbol, Price = JsonNumbers.ToDecimal(price) ?? 0, Currency = vs.ToUpperInvariant(), Name = symbol, ChangePercent = change };
+        return new QuoteDto { Symbol = symbol, Price = value, Currency = vs.ToUpperInvariant(), Name = symbol, ChangePercent = change };
     }
 
     private (string Id, string Vs) Coin(string symbol)

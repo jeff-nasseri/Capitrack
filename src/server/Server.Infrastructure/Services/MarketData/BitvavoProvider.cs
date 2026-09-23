@@ -47,9 +47,30 @@ public sealed class BitvavoProvider(HttpClient http, TimeSpan? rateLimit = null)
     {
         if (!Supports(symbol, AssetClass.Crypto)) return null;
         using var doc = await GetAsync($"ticker/24h?market={Market(symbol)}", ct);
-        if (doc is null) return null;
-        var last = JsonNumbers.ToDecimal(doc.RootElement.GetProperty("last")) ?? 0;
-        var open = doc.RootElement.TryGetProperty("open", out var o) ? JsonNumbers.ToDecimal(o) ?? 0 : 0;
+        return doc is null ? null : ToQuote(symbol, doc.RootElement);
+    }
+
+    /// <summary>Every market's 24-hour ticker comes in one request.</summary>
+    public async Task<IReadOnlyDictionary<string, QuoteDto>> QuotesAsync(IReadOnlyList<string> symbols, CancellationToken ct = default)
+    {
+        var quotes = new Dictionary<string, QuoteDto>();
+        var wanted = symbols.Where(s => Supports(s, AssetClass.Crypto)).ToList();
+        if (wanted.Count == 0) return quotes;
+        using var doc = await GetAsync("ticker/24h", ct);
+        if (doc is null) return quotes;
+        var byMarket = new Dictionary<string, JsonElement>(StringComparer.OrdinalIgnoreCase);
+        foreach (var t in doc.RootElement.EnumerateArray())
+            if (t.TryGetProperty("market", out var m) && m.GetString() is { } market) byMarket[market] = t;
+        foreach (var symbol in wanted)
+            if (byMarket.TryGetValue(Market(symbol), out var t) && ToQuote(symbol, t) is { } quote) quotes[symbol] = quote;
+        return quotes;
+    }
+
+    private static QuoteDto? ToQuote(string symbol, JsonElement ticker)
+    {
+        var last = ticker.TryGetProperty("last", out var l) ? JsonNumbers.ToDecimal(l) ?? 0 : 0;
+        if (last <= 0) return null;
+        var open = ticker.TryGetProperty("open", out var o) ? JsonNumbers.ToDecimal(o) ?? 0 : 0;
         return new QuoteDto { Symbol = symbol, Price = last, Currency = "EUR", Name = symbol, ChangePercent = open > 0 ? (double)((last - open) / open * 100) : 0 };
     }
 

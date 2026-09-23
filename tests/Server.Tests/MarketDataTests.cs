@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Server.Application.Common.Interfaces;
 using Server.Application.Prices;
@@ -34,7 +35,8 @@ public class MarketDataTests
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             Requests.Add(request.RequestUri!);
-            var (status, file) = Routes[request.RequestUri!.Host];
+            var uri = request.RequestUri!;
+            var (status, file) = Routes.TryGetValue(uri.Host + uri.AbsolutePath, out var exact) ? exact : Routes[uri.Host];
             return Task.FromResult(new HttpResponseMessage(status) { Content = new StringContent(Fixture(file)) });
         }
     }
@@ -146,13 +148,61 @@ public class MarketDataTests
             System.Web.HttpUtility.ParseQueryString(uri.Query).AllKeys.Should().BeSubsetOf(allowed, uri.ToString());
     }
 
+    [Fact]
+    public async Task Kraken_quotes_many_pairs_in_one_request_under_its_own_pair_names()
+    {
+        var (http, api) = Http();
+        api.Routes["api.kraken.com/0/public/AssetPairs"] = (HttpStatusCode.OK, "kraken_assetpairs.json");
+        api.Routes["api.kraken.com/0/public/Ticker"] = (HttpStatusCode.OK, "kraken_ticker_multi.json");
+        IPriceProvider kraken = new KrakenProvider(http, new FixedClock(Now), NoWait);
+
+        var quotes = await kraken.QuotesAsync(["BTC-USD", "ETH-USD", "DOGE-USD", "MSVP-USD"]);
+
+        quotes.Keys.Should().BeEquivalentTo("BTC-USD", "ETH-USD", "DOGE-USD");   // answered as XXBTZUSD, XETHZUSD, XDGUSD
+        quotes["BTC-USD"].Price.Should().Be(85483.8m);
+        quotes["DOGE-USD"].Price.Should().Be(0.0988656m);
+        quotes["BTC-USD"].ChangePercent.Should().BeApproximately((double)((85483.8m - 86199.4m) / 86199.4m * 100), 1e-9);
+        // an unlisted pair would make Kraken reject the whole request: it is never sent
+        api.Requests.Single(r => r.AbsolutePath.EndsWith("/Ticker")).Query.Should().Be("?pair=XBTUSD,ETHUSD,XDGUSD");
+    }
+
+    [Fact]
+    public async Task Bitvavo_quotes_every_market_from_one_request_in_euro()
+    {
+        var (http, api) = Http();
+        api.Routes["api.bitvavo.com/v2/ticker/24h"] = (HttpStatusCode.OK, "bitvavo_ticker_24h.json");
+        IPriceProvider bitvavo = new BitvavoProvider(http, NoWait);
+
+        var quotes = await bitvavo.QuotesAsync(["BTC-USD", "ADA-USD", "DOGE-USD"]);
+
+        api.Requests.Should().ContainSingle().Which.Query.Should().BeEmpty();
+        quotes.Keys.Should().BeEquivalentTo("BTC-USD", "ADA-USD");                // DOGE is not in the recording
+        quotes.Values.Should().OnlyContain(q => q.Currency == "EUR" && q.Price > 0);
+    }
+
+    [Fact]
+    public async Task CoinGecko_quotes_every_coin_from_one_request()
+    {
+        var (http, api) = Http();
+        api.Routes["api.coingecko.com/api/v3/simple/price"] = (HttpStatusCode.OK, "coingecko_simple_price.json");
+        IPriceProvider gecko = new CoinGeckoProvider(http, null, new FixedClock(Now), NoWait);
+
+        var quotes = await gecko.QuotesAsync(["BTC-USD", "ETH-USD"]);
+
+        api.Requests.Should().ContainSingle().Which.Query.Should().Contain("ids=bitcoin,ethereum");
+        quotes["BTC-USD"].Price.Should().Be(85611m);
+        quotes["ETH-USD"].Price.Should().Be(2727.45m);
+    }
+
     // ---------------------------------------------------------------- the router
 
     /// <summary>A scripted provider for routing tests.</summary>
     private sealed class FakeProvider(string id, Func<DateOnly, DateOnly, PriceSeries?>? daily = null, bool configured = true,
-        PricePoint? hourly = null, AssetClass assetClass = AssetClass.Crypto) : IPriceProvider
+        PricePoint? hourly = null, AssetClass assetClass = AssetClass.Crypto, Dictionary<string, decimal>? prices = null,
+        string currency = "USD") : IPriceProvider
     {
         public int DailyCalls;
+        public List<string> Quoted { get; } = [];
         public ProviderInfo Info { get; } = new(id, id, [assetClass], false, null, null, "", "");
         public bool IsConfigured => configured;
         public bool Supports(string symbol, AssetClass c) => c == assetClass;
@@ -162,7 +212,11 @@ public class MarketDataTests
             return Task.FromResult(daily?.Invoke(from, to));
         }
         public Task<PricePoint?> HourlyAtAsync(string symbol, DateTime utc, CancellationToken ct = default) => Task.FromResult(hourly);
-        public Task<QuoteDto?> QuoteAsync(string symbol, CancellationToken ct = default) => Task.FromResult<QuoteDto?>(null);
+        public Task<QuoteDto?> QuoteAsync(string symbol, CancellationToken ct = default)
+        {
+            Quoted.Add(symbol);
+            return Task.FromResult(prices?.TryGetValue(symbol, out var p) == true ? new QuoteDto { Symbol = symbol, Price = p, Currency = currency } : null);
+        }
     }
 
     private static Func<DateOnly, DateOnly, PriceSeries?> Days(string id, decimal price, string currency = "USD", DateOnly? onlyFrom = null) =>
@@ -215,6 +269,34 @@ public class MarketDataTests
 
         first.DailyCalls.Should().Be(1);
         again!.Closes.Should().HaveCount(11).And.OnlyContain(c => c.Close == 5m);
+    }
+
+    [Fact]
+    public async Task Concurrent_requests_for_the_same_closes_fetch_them_once_and_both_succeed()
+    {
+        var file = Path.Combine(Path.GetTempPath(), $"capitrack-md-{Guid.NewGuid():N}.db");
+        var options = new Microsoft.EntityFrameworkCore.DbContextOptionsBuilder<Server.Infrastructure.Persistence.CapitrackDbContext>()
+            .UseSqlite($"Data Source={file};Pooling=False").Options;
+        try
+        {
+            using (var db = new Server.Infrastructure.Persistence.CapitrackDbContext(options)) db.Database.EnsureCreated();
+            var calls = 0;
+            var slow = new FakeProvider(First, (from, to) => { Interlocked.Increment(ref calls); Thread.Sleep(150); return Days(First, 7m)(from, to); });
+            MarketDataService NewRouter() => new(new Server.Infrastructure.Persistence.CapitrackDbContext(options), Chain(slow, new FakeProvider(Second)),
+                NullLogger<MarketDataService>.Instance, new FixedClock(Now));
+
+            var results = await Task.WhenAll(
+                Task.Run(() => NewRouter().DailyAsync("BTC-USD", D(2026, 3, 1), D(2026, 3, 31))),
+                Task.Run(() => NewRouter().DailyAsync("BTC-USD", D(2026, 3, 1), D(2026, 3, 31))));
+
+            calls.Should().Be(1);
+            results.Should().OnlyContain(r => r != null && r.Provider == First && r.Closes.Count == 31);
+        }
+        finally
+        {
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            File.Delete(file);
+        }
     }
 
     [Fact]
@@ -274,6 +356,34 @@ public class MarketDataTests
         var point = await Router(t, dailyOnly).PriceAtAsync("SOL-USD", at);
         point!.Resolution.Should().Be("day");
         point.Price.Should().Be(130m);
+    }
+
+    [Fact]
+    public async Task Quotes_ask_each_provider_only_for_the_symbols_still_missing()
+    {
+        using var t = new TestDb();
+        var first = new FakeProvider(First, prices: new() { ["BTC-USD"] = 100m });
+        var second = new FakeProvider(Second, prices: new() { ["BTC-USD"] = 999m, ["ETH-USD"] = 50m });
+        var stocks = new FakeProvider("yahoo-finance", assetClass: AssetClass.Stock, prices: new() { ["AAPL"] = 200m });
+
+        var quotes = await Router(t, first, second, stocks).QuotesAsync(["btc-usd", "ETH-USD", "SPAM-USD", "AAPL"]);
+
+        quotes.Keys.Should().BeEquivalentTo("BTC-USD", "ETH-USD", "AAPL");     // unpriced symbols are left out
+        quotes["BTC-USD"].Price.Should().Be(100m);                           // the first provider wins
+        second.Quoted.Should().BeEquivalentTo("ETH-USD", "SPAM-USD");        // never re-asked for what the first one had
+    }
+
+    [Fact]
+    public async Task A_crypto_quote_priced_in_another_currency_is_shown_in_the_pairs_own_currency()
+    {
+        using var t = new TestDb();
+        var euroOnly = new FakeProvider(First, prices: new() { ["BNB-USD"] = 500m }, currency: "EUR");   // e.g. Bitvavo
+        var ecb = new FakeProvider("ecb", Days("ecb", 1.2m), assetClass: AssetClass.Fx);                 // 1 EUR = 1.2 USD
+
+        var quote = (await Router(t, euroOnly, new FakeProvider(Second), ecb).QuotesAsync(["BNB-USD"]))["BNB-USD"];
+
+        quote.Currency.Should().Be("USD");   // compared with a USD cost basis, never EUR against USD
+        quote.Price.Should().Be(600m);
     }
 
     [Fact]

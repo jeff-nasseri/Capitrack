@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Globalization;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
@@ -31,6 +32,9 @@ public sealed class MarketDataService(CapitrackDbContext db, IEnumerable<IPriceP
     };
 
     private readonly List<IPriceProvider> _providers = providers.ToList();
+
+    /// <summary>One cache fill at a time per (symbol, provider) across requests and the background top-up.</summary>
+    private static readonly ConcurrentDictionary<string, SemaphoreSlim> FillLocks = new();
 
     // ---------------------------------------------------------------- daily closes
 
@@ -68,6 +72,17 @@ public sealed class MarketDataService(CapitrackDbContext db, IEnumerable<IPriceP
 
     private async Task EnsureCachedAsync(IPriceProvider provider, string symbol, DateOnly from, DateOnly to, CancellationToken ct)
     {
+        var gate = FillLocks.GetOrAdd($"{symbol}|{provider.Info.Id}", _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(ct);
+        try { await FillAsync(provider, symbol, from, to, ct); }
+        finally { gate.Release(); }
+    }
+
+    private async Task FillAsync(IPriceProvider provider, string symbol, DateOnly from, DateOnly to, CancellationToken ct)
+    {
+        // another request may have extended the coverage since this context last read it
+        if (db.ChangeTracker.Entries<PriceCoverageRecord>().FirstOrDefault(e => e.Entity.Symbol == symbol && e.Entity.Provider == provider.Info.Id) is { } seen)
+            await seen.ReloadAsync(ct);
         var coverage = await db.PriceCoverage.FindAsync([symbol, provider.Info.Id], ct);
         // only the days outside the covered interval are fetched; the gaps adjoin it, so it stays one interval
         var gaps = new List<(DateOnly From, DateOnly To)>();
@@ -148,7 +163,11 @@ public sealed class MarketDataService(CapitrackDbContext db, IEnumerable<IPriceP
         {
             try
             {
-                if (await provider.QuoteAsync(symbol, ct) is { Price: > 0 } quote) return quote;
+                if (await provider.QuoteAsync(symbol, ct) is { Price: > 0 } quote)
+                {
+                    await InPairCurrencyAsync(symbol, quote, ct);
+                    return quote;
+                }
             }
             catch (Exception e) when (e is not OperationCanceledException)
             {
@@ -156,6 +175,50 @@ public sealed class MarketDataService(CapitrackDbContext db, IEnumerable<IPriceP
             }
         }
         return null;
+    }
+
+    public async Task<IReadOnlyDictionary<string, QuoteDto>> QuotesAsync(IEnumerable<string> symbols, CancellationToken ct = default)
+    {
+        var order = await OrderAsync(ct); // read once: the groups below run in parallel and must not share the DbContext
+        var groups = symbols.Select(s => s.Trim().ToUpperInvariant()).Where(s => s.Length > 0).Distinct().GroupBy(MarketSymbols.Classify);
+        var found = await Task.WhenAll(groups.Select(g => QuoteGroupAsync(g.Key, g.ToList(), order[g.Key], ct)));
+        var quotes = found.SelectMany(d => d).ToDictionary(kv => kv.Key, kv => kv.Value);
+        foreach (var (symbol, quote) in quotes) await InPairCurrencyAsync(symbol, quote, ct);
+        return quotes;
+    }
+
+    /// <summary>
+    /// A crypto pair is quoted in its own quote currency (BTC-USD in USD) even when the provider that answered
+    /// prices it in another (Bitvavo: EUR), converted at the latest ECB rate, so it compares with its cost.
+    /// </summary>
+    private async Task InPairCurrencyAsync(string symbol, QuoteDto quote, CancellationToken ct)
+    {
+        if (MarketSymbols.CryptoPair(symbol) is not { } pair || pair.Quote.Equals(quote.Currency, StringComparison.OrdinalIgnoreCase)) return;
+        if (await FxRateAsync(quote.Currency, pair.Quote, Today(), ct) is not { } rate) return;
+        quote.Price *= rate;
+        quote.Currency = pair.Quote;
+    }
+
+    /// <summary>Walks one asset class's providers in order, asking each for every symbol still missing that it supports.</summary>
+    private async Task<Dictionary<string, QuoteDto>> QuoteGroupAsync(AssetClass assetClass, List<string> symbols, List<string> order, CancellationToken ct)
+    {
+        var quotes = new Dictionary<string, QuoteDto>();
+        foreach (var provider in order.Select(id => _providers.FirstOrDefault(p => p.Info.Id == id)).OfType<IPriceProvider>().Where(p => p.IsConfigured))
+        {
+            var ask = symbols.Where(s => !quotes.ContainsKey(s) && provider.Supports(s, assetClass)).ToList();
+            if (ask.Count == 0) continue;
+            try
+            {
+                foreach (var (symbol, quote) in await provider.QuotesAsync(ask, ct))
+                    if (quote.Price > 0 && ask.Contains(symbol)) quotes[symbol] = quote;
+            }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                log.LogWarning("Price provider {Provider} failed to quote {Count} symbols: {Error}", provider.Info.Id, ask.Count, e.Message);
+            }
+            if (quotes.Count == symbols.Count) break;
+        }
+        return quotes;
     }
 
     public async Task<decimal?> FxRateAsync(string from, string to, DateOnly date, CancellationToken ct = default)

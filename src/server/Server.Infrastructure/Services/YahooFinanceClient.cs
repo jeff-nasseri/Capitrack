@@ -49,6 +49,36 @@ public class YahooFinanceClient : IYahooFinanceClient
         finally { _crumbLock.Release(); }
     }
 
+    public async Task<Dictionary<string, QuoteDto>> QuotesAsync(IReadOnlyList<string> symbols)
+    {
+        var quotes = new Dictionary<string, QuoteDto>(StringComparer.OrdinalIgnoreCase);
+        if (symbols.Count == 0) return quotes;
+        try
+        {
+            await EnsureCrumbAsync();
+            if (_crumb == null) return quotes;
+            var list = string.Join(',', symbols.Select(s => Uri.EscapeDataString(s.ToUpperInvariant())));
+            var resp = await _http.GetAsync($"https://query1.finance.yahoo.com/v7/finance/quote?symbols={list}&crumb={Uri.EscapeDataString(_crumb)}");
+            if (resp.StatusCode == HttpStatusCode.Unauthorized) { _crumb = null; return quotes; }
+            if (!resp.IsSuccessStatusCode) return quotes;
+            using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+            foreach (var q in doc.RootElement.GetProperty("quoteResponse").GetProperty("result").EnumerateArray())
+            {
+                if (GetString(q, "symbol") is not { } symbol || (GetDecimal(q, "regularMarketPrice") ?? 0) <= 0) continue;
+                quotes[symbol] = new QuoteDto
+                {
+                    Symbol = symbol.ToUpperInvariant(),
+                    Price = GetDecimal(q, "regularMarketPrice") ?? 0,
+                    Currency = GetString(q, "currency") ?? "USD",
+                    Name = GetString(q, "shortName") ?? GetString(q, "longName") ?? symbol,
+                    ChangePercent = GetDouble(q, "regularMarketChangePercent") ?? 0
+                };
+            }
+        }
+        catch (Exception ex) { _log.LogWarning(ex, "Yahoo v7 multi-quote failed for {Count} symbols", symbols.Count); }
+        return quotes;
+    }
+
     public async Task<QuoteDto?> QuoteAsync(string symbol)
     {
         symbol = symbol.ToUpperInvariant();

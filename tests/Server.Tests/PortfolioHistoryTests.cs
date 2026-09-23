@@ -27,6 +27,7 @@ public class PortfolioHistoryTests
             Task.FromResult<decimal?>(from == "USD" && to == "EUR" ? 0.8m : null);
         public Task<PricePoint?> PriceAtAsync(string symbol, DateTime utc, string? providerId = null, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<QuoteDto?> QuoteAsync(string symbol, CancellationToken ct = default) => throw new NotSupportedException();
+        public Task<IReadOnlyDictionary<string, QuoteDto>> QuotesAsync(IEnumerable<string> symbols, CancellationToken ct = default) => throw new NotSupportedException();
         public Task<List<MarketDataProviderDto>> ProvidersAsync(CancellationToken ct = default) => throw new NotSupportedException();
         public Task SetProviderOrderAsync(Dictionary<AssetClass, List<string>> order, CancellationToken ct = default) => throw new NotSupportedException();
     }
@@ -34,6 +35,7 @@ public class PortfolioHistoryTests
     private sealed class NoQuotes : IPriceService
     {
         public Task<QuoteDto?> GetQuoteAsync(string symbol) => Task.FromResult<QuoteDto?>(null);
+        public Task<Dictionary<string, QuoteDto>> GetQuotesAsync(IEnumerable<string> symbols) => Task.FromResult(new Dictionary<string, QuoteDto>());
         public Task<QuoteDto?> GetCachedAsync(string symbol) => Task.FromResult<QuoteDto?>(null);
         public Task UpsertAsync(QuoteDto quote) => Task.CompletedTask;
     }

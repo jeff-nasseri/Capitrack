@@ -68,6 +68,28 @@ public interface IPriceProvider
 
     /// <summary>The latest price, or null.</summary>
     Task<QuoteDto?> QuoteAsync(string symbol, CancellationToken ct = default);
+
+    /// <summary>
+    /// The latest prices of several symbols, keyed by symbol; symbols it cannot price are left out.
+    /// Providers with a multi-symbol endpoint answer in one request; the default asks one by one.
+    /// </summary>
+    async Task<IReadOnlyDictionary<string, QuoteDto>> QuotesAsync(IReadOnlyList<string> symbols, CancellationToken ct = default)
+    {
+        var quotes = new Dictionary<string, QuoteDto>();
+        foreach (var symbol in symbols)
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                if (await QuoteAsync(symbol, ct) is { Price: > 0 } quote) quotes[symbol] = quote;
+            }
+            catch (Exception) when (!ct.IsCancellationRequested)
+            {
+                // this symbol failed; the others may not
+            }
+        }
+        return quotes;
+    }
 }
 
 /// <summary>
@@ -84,6 +106,12 @@ public interface IMarketDataService
 
     /// <summary>The latest quote, with fallback across providers.</summary>
     Task<QuoteDto?> QuoteAsync(string symbol, CancellationToken ct = default);
+
+    /// <summary>
+    /// The latest quotes of several symbols, keyed by (upper-case) symbol: each asset class in parallel,
+    /// each provider asked once for all the symbols still missing. Unpriced symbols are left out.
+    /// </summary>
+    Task<IReadOnlyDictionary<string, QuoteDto>> QuotesAsync(IEnumerable<string> symbols, CancellationToken ct = default);
 
     /// <summary>
     /// How many units of <paramref name="to"/> one unit of <paramref name="from"/> is worth on
