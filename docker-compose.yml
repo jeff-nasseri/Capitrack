@@ -31,7 +31,7 @@ services:
       api:
         condition: service_healthy
     ports:
-      - "3000:80"
+      - "3011:80"
 
 volumes:
   capitrack-dotnet-data:
