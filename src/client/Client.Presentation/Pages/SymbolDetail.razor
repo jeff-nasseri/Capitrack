@@ -182,16 +182,14 @@
     {
         var quoteTask = Api.GetAsync<QuoteDto>($"/api/prices/quote/{Uri.EscapeDataString(Symbol)}");
         var txTask = Api.GetAsync<List<TransactionDto>>($"/api/transactions?account_id={AccountId}&symbol={Uri.EscapeDataString(Symbol)}");
-        await Task.WhenAll(quoteTask, txTask);
+        var holdingsTask = Api.GetAsync<List<HoldingDto>>($"/api/accounts/{AccountId}/holdings");
+        await Task.WhenAll(quoteTask, txTask, holdingsTask);
         _quote = await quoteTask;
         _transactions = await txTask ?? [];
 
-        decimal totalQty = 0, totalCost = 0, totalBuyQty = 0;
-        foreach (var tx in _transactions)
-        {
-            if (tx.Type is "buy" or "transfer_in") { totalQty += tx.Quantity; totalCost += tx.Quantity * tx.Price; totalBuyQty += tx.Quantity; }
-            else if (tx.Type is "sell" or "transfer_out") { totalQty -= tx.Quantity; }
-        }
+        // the server's holding applies the same rules everywhere (fees, staking, average cost)
+        var holding = (await holdingsTask ?? []).FirstOrDefault(h => string.Equals(h.Symbol, Symbol, StringComparison.OrdinalIgnoreCase));
+        var totalQty = holding?.Quantity ?? 0;
 
         _price = _quote?.Price ?? 0;
         _currency = _quote?.Currency ?? "USD";
@@ -199,8 +197,8 @@
         _priceChange = _price * (decimal)_changePct / 100;
         _totalQty = totalQty;
         _marketValue = totalQty * _price;
-        _avgCost = totalBuyQty > 0 ? totalCost / totalBuyQty : 0;
-        _bookValue = totalQty * _avgCost;
+        _avgCost = holding?.AvgCost ?? 0;
+        _bookValue = holding?.TotalCost ?? 0;
         _totalReturn = _marketValue - _bookValue;
         _totalReturnPct = _bookValue > 0 ? (double)(_totalReturn / _bookValue * 100) : 0;
         _todayReturn = totalQty * (_price * (decimal)_changePct / 100);

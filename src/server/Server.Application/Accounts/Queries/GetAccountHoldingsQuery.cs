@@ -23,8 +23,9 @@ public sealed class GetAccountHoldingsQueryHandler(
         if (!await accounts.ExistsAsync(request.Id, cancellationToken))
             throw new NotFoundException("Account not found");
 
-        var txs = await transactions.ForAccountAsync(request.Id, cancellationToken);
-        var holdings = HoldingsCalculator.ForAccount(txs);
+        // replay the whole portfolio so coins moved in from another of your accounts keep their cost basis
+        var all = await transactions.AllAsync(cancellationToken);
+        var holdings = HoldingsCalculator.ForAccount(all, request.Id);
         return holdings.Select(h => mapper.Map<HoldingDto>(h)).ToList();
     }
 }

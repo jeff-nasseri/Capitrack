@@ -63,9 +63,10 @@ public sealed class WealthService(CapitrackDbContext db, IPriceService prices, I
                 marketValue *= rates.GetValueOrDefault($"{priceCurrency}_{baseCurrency}", 1m);
 
             var account = accounts.GetValueOrDefault(h.AccountId);
-            var accountCurrency = account?.Currency.Value ?? "";
-            if (!string.IsNullOrEmpty(accountCurrency) && accountCurrency != baseCurrency)
-                costBasis *= rates.GetValueOrDefault($"{accountCurrency}_{baseCurrency}", 1m);
+            // cost basis is expressed in the currency the units were acquired in (not the account's)
+            var costCurrency = h.CostCurrency ?? account?.Currency.Value ?? "";
+            if (!string.IsNullOrEmpty(costCurrency) && costCurrency != baseCurrency)
+                costBasis *= rates.GetValueOrDefault($"{costCurrency}_{baseCurrency}", 1m);
 
             if (!perAccount.TryGetValue(h.AccountId, out var acc))
                 perAccount[h.AccountId] = acc = new AccountAccum { AccountId = h.AccountId, AccountName = account?.Name ?? "" };
@@ -150,15 +151,17 @@ public sealed class WealthService(CapitrackDbContext db, IPriceService prices, I
 
         var q = db.Transactions.AsQueryable();
         if (accountId is int aid) q = q.Where(t => t.AccountId == aid);
-        var transactions = await q.OrderBy(t => t.Date).ToListAsync();
+        var transactions = HoldingsCalculator.Chronological(await q.ToListAsync()).ToList();
         if (transactions.Count == 0) return [];
+        // remaining cost basis after each transaction (average cost; sales/fees remove cost, not proceeds)
+        var costTimeline = HoldingsCalculator.CostTimeline(transactions);
 
         var holdingMap = new Dictionary<string, decimal>();
         foreach (var tx in transactions)
         {
             holdingMap.TryAdd(tx.Symbol.Value, 0);
-            if (tx.Type.CountsAsHistoryAdd) holdingMap[tx.Symbol.Value] += tx.Quantity.Value;
-            else if (tx.Type.CountsAsHistorySub && !tx.IsStaked) holdingMap[tx.Symbol.Value] -= tx.Quantity.Value;
+            if (tx.Type.IncreasesQuantity) holdingMap[tx.Symbol.Value] += tx.Quantity.Value;
+            else if (tx.Type.DecreasesQuantity && !tx.IsStaked) holdingMap[tx.Symbol.Value] -= tx.Quantity.Value;
         }
         var activeSymbols = holdingMap.Where(kv => kv.Value > 0.00000001m).Select(kv => kv.Key).ToList();
         if (activeSymbols.Count == 0) return [];
@@ -194,14 +197,16 @@ public sealed class WealthService(CapitrackDbContext db, IPriceService prices, I
         var history = new List<PortfolioHistoryPointDto>();
         var running = new Dictionary<string, decimal>();
         int txIndex = 0;
+        decimal totalCost = 0;
         foreach (var dateStr in allDates)
         {
             while (txIndex < transactions.Count && string.CompareOrdinal(transactions[txIndex].Date.Value, dateStr) <= 0)
             {
                 var tx = transactions[txIndex];
+                totalCost = costTimeline[txIndex].TotalCost;
                 running.TryAdd(tx.Symbol.Value, 0);
-                if (tx.Type.CountsAsHistoryAdd) running[tx.Symbol.Value] += tx.Quantity.Value;
-                else if (tx.Type.CountsAsHistorySub && !tx.IsStaked) running[tx.Symbol.Value] -= tx.Quantity.Value;
+                if (tx.Type.IncreasesQuantity) running[tx.Symbol.Value] += tx.Quantity.Value;
+                else if (tx.Type.DecreasesQuantity && !tx.IsStaked) running[tx.Symbol.Value] -= tx.Quantity.Value;
                 txIndex++;
             }
 
@@ -220,10 +225,6 @@ public sealed class WealthService(CapitrackDbContext db, IPriceService prices, I
                 }
                 totalValue += qty * price;
             }
-
-            decimal totalCost = transactions
-                .Where(t => string.CompareOrdinal(t.Date.Value, dateStr) <= 0 && t.Type.IncreasesQuantity)
-                .Sum(t => t.Quantity.Value * t.Price);
 
             history.Add(new PortfolioHistoryPointDto(
                 dateStr,
@@ -265,9 +266,9 @@ public sealed class WealthService(CapitrackDbContext db, IPriceService prices, I
             if (priceCurrency != baseCurrency)
                 marketValue *= rates.GetValueOrDefault($"{priceCurrency}_{baseCurrency}", 1m);
             var account = accounts.GetValueOrDefault(h.AccountId);
-            var accountCurrency = account?.Currency.Value ?? "";
-            if (!string.IsNullOrEmpty(accountCurrency) && accountCurrency != baseCurrency)
-                costBasis *= rates.GetValueOrDefault($"{accountCurrency}_{baseCurrency}", 1m);
+            var costCurrency = h.CostCurrency ?? account?.Currency.Value ?? "";
+            if (!string.IsNullOrEmpty(costCurrency) && costCurrency != baseCurrency)
+                costBasis *= rates.GetValueOrDefault($"{costCurrency}_{baseCurrency}", 1m);
 
             if (!details.TryGetValue(h.AccountId, out var acc))
                 details[h.AccountId] = acc = new AccountAccum { AccountId = h.AccountId, AccountName = account?.Name ?? "" };

@@ -190,7 +190,8 @@
             decimal costBasis = h.Quantity * (h.AvgCost ?? 0);
             var priceCurrency = p?.Currency ?? "USD";
             if (priceCurrency != _base) marketValue *= rates.GetValueOrDefault($"{priceCurrency}_{_base}", 1m);
-            if (_account.Currency != _base) costBasis *= rates.GetValueOrDefault($"{_account.Currency}_{_base}", 1m);
+            var costCurrency = h.CostCurrency ?? _account.Currency; // cost is in the acquisitions' currency
+            if (costCurrency != _base) costBasis *= rates.GetValueOrDefault($"{costCurrency}_{_base}", 1m);
             var gain = marketValue - costBasis;
             enriched.Add(new EnrichedHolding
             {

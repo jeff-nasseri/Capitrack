@@ -22,8 +22,8 @@ public class HoldingsCalculatorTests
         var holding = HoldingsCalculator.ForAccount(txs).Single();
 
         holding.Quantity.Should().Be(6);                 // 10 - 4
-        holding.AvgCost.Should().Be(150);                // buyValue 1500 / buyQty 10
-        holding.TotalCost.Should().Be(700);             // (10*150) - (4*200)
+        holding.AvgCost.Should().Be(150);                // a partial sale leaves the average cost unchanged
+        holding.TotalCost.Should().Be(900);             // 6 remaining × 150 — the sale removes cost, not the 800 of proceeds
         holding.TransactionCount.Should().Be(2);
         holding.FirstTransaction.Should().Be("2024-01-01");
         holding.LastTransaction.Should().Be("2024-03-01");

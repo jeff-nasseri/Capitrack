@@ -10,4 +10,5 @@ public class HoldingDto
     public int TransactionCount { get; set; }
     public string? FirstTransaction { get; set; }
     public string? LastTransaction { get; set; }
+    public string? CostCurrency { get; set; }
 }

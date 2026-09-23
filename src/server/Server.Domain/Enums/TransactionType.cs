@@ -56,11 +56,11 @@ public sealed class TransactionType : ValueObject
     /// <summary>sell / transfer_out / fee — removes units from a holding.</summary>
     public bool DecreasesQuantity => this == Sell || this == TransferOut || this == Fee;
 
-    /// <summary>Types that add to portfolio-history quantity replay (buy, transfer_in, dividend).</summary>
-    public bool CountsAsHistoryAdd => this == Buy || this == TransferIn || this == Dividend;
+    /// <summary>Types that add units in the portfolio-history replay — the same as <see cref="IncreasesQuantity"/> (a dividend is cash, not shares).</summary>
+    public bool CountsAsHistoryAdd => IncreasesQuantity;
 
-    /// <summary>Types that subtract from portfolio-history quantity replay (sell, transfer_out, fee).</summary>
-    public bool CountsAsHistorySub => this == Sell || this == TransferOut || this == Fee;
+    /// <summary>Types that remove units in the portfolio-history replay — the same as <see cref="DecreasesQuantity"/>.</summary>
+    public bool CountsAsHistorySub => DecreasesQuantity;
 
     /// <inheritdoc />
     protected override IEnumerable<object?> GetEqualityComponents() { yield return Value; }
