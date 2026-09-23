@@ -21,10 +21,12 @@ namespace Server.Infrastructure.Services.Import;
 /// labels or the position in the file), suffixed with "#n" to count genuinely identical rows.
 /// </param>
 /// <param name="LocalDate">The date in the source's local time, when it can differ from <paramref name="Date"/>.</param>
+/// <param name="NeedsPrice">The source gives no value for this leg: the importer prices it at the market price of its time.</param>
+/// <param name="UnitFee">A fee the source states in the asset's own units; it becomes <paramref name="Fee"/> once the leg is priced.</param>
 public sealed record ImportLeg(
     string Symbol, string Type, decimal Quantity, decimal Price, decimal Fee, string Currency,
     string Date, string Notes, DateTime? OccurredAt = null, string? ExternalId = null, bool CanStake = false,
-    string Key = "", string? LocalDate = null);
+    string Key = "", string? LocalDate = null, bool NeedsPrice = false, decimal UnitFee = 0);
 
 /// <summary>The outcome of one CSV data row: the legs it produces, or why it produces none.</summary>
 /// <param name="Row">The 1-based data row number within the file (for reporting only).</param>
@@ -214,7 +216,9 @@ public static class CsvImportParser
                 legs.Add(new ImportLeg(CryptoSymbol(unit), kind == "RECV" ? "transfer_in" : "transfer_out", amount, unitPrice, 0, "USD",
                     when.Date, $"Trezor {kind}", when.Utc, externalId, CanStake: kind == "SENT",
                     // a transaction can pay several outputs of one asset: the address + amount tell them apart
-                    Key: $"trezor|{txKey}|{direction}|{unit.ToUpperInvariant()}|{address}|{Norm(amount)}", LocalDate: when.LocalDate));
+                    Key: $"trezor|{txKey}|{direction}|{unit.ToUpperInvariant()}|{address}|{Norm(amount)}", LocalDate: when.LocalDate,
+                    // an empty fiat column means Trezor had no rate; "0" means the amount is worth less than a cent
+                    NeedsPrice: string.IsNullOrWhiteSpace(Get(r, "Fiat (USD)"))));
             }
         }
         else if (DecimalParser.TryParse(Get(r, "Amount"), sep, out var moved) && moved != 0 && fiat > 0)
@@ -320,9 +324,11 @@ public static class CsvImportParser
             var currency = Get(r, "Currency") is { Length: > 0 } c ? c : "XAU";
             var symbol = MetalSymbols.GetValueOrDefault(currency, currency);
 
-            rows.Add(new ParsedRow(row, [new ImportLeg(symbol, txType, amount, 0, fee, "EUR", when.Date,
-                $"Revolut Commodity: {description} ({currency})", when.Utc,
-                Key: $"revolut-commodities|{dateStr}|{description}|{Norm(amount)}|{currency}")], null));
+            // the statement gives only the metal amount (and the fee in metal units): priced at the market price of its time
+            var feeNote = fee > 0 ? $"; fee {Norm(fee)} {currency}" : "";
+            rows.Add(new ParsedRow(row, [new ImportLeg(symbol, txType, amount, 0, 0, "EUR", when.Date,
+                $"Revolut Commodity: {description} ({currency}){feeNote}", when.Utc,
+                Key: $"revolut-commodities|{dateStr}|{description}|{Norm(amount)}|{currency}", NeedsPrice: true, UnitFee: fee)], null));
         }
         return rows;
     }

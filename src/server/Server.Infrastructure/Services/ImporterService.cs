@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+using System.Globalization;
 using Server.Domain.Holdings;
 using Server.Domain.Transactions;
 using Server.Infrastructure.Persistence;
@@ -47,8 +49,11 @@ public sealed record ImportFileRequest(string FileName, string Content, ISet<int
 /// Idempotency: every leg carries a key built from the source's immutable fields and the database
 /// holds it unique per account, so re-importing the same or overlapping exports never duplicates.
 /// </summary>
-public sealed class ImporterService(CapitrackDbContext db) : IImporterService
+public sealed class ImporterService(CapitrackDbContext db, IMarketDataService? market = null) : IImporterService
 {
+    /// <summary>Market prices already looked up (symbol|UTC hour|currency), so a preview and its import price legs identically.</summary>
+    private static readonly ConcurrentDictionary<string, (decimal Price, string Source)> PriceMemo = new();
+
     public DetectResultDto Detect(string content)
     {
         var (records, headers) = CsvImportParser.ReadCsv(content);
@@ -67,7 +72,7 @@ public sealed class ImporterService(CapitrackDbContext db) : IImporterService
         var plannedFiles = new List<PlannedFile>(files.Count);
         foreach (var file in files)
         {
-            var parsed = CsvImportParser.Parse(file.Content);
+            var parsed = await PriceUnpricedAsync(CsvImportParser.Parse(file.Content), ct);
             var rows = new List<PlannedRow>(parsed.Rows.Count);
             foreach (var row in parsed.Rows)
             {
@@ -152,6 +157,51 @@ public sealed class ImporterService(CapitrackDbContext db) : IImporterService
             .ToList();
         var format = plan.Files.Count == 1 ? plan.Files[0].Parsed.Format : "bulk";
         return new ImportResultDto(imported, skipped, rows.Count, errors, format, rejections.Count, rejections, updated);
+    }
+
+    /// <summary>
+    /// Legs whose source gives no value (e.g. Revolut commodity exchanges) are priced at the market price of
+    /// their time: the hourly candle when a provider has one, otherwise the close of that UTC day (the
+    /// documented fallback), converted to the leg's currency. A fee stated in the asset's units is valued at
+    /// that price. Legs no provider can price keep a price of 0.
+    /// </summary>
+    private async Task<ParsedFile> PriceUnpricedAsync(ParsedFile parsed, CancellationToken ct)
+    {
+        if (market is null || !parsed.Rows.Any(r => r.Legs.Any(l => l.NeedsPrice))) return parsed;
+        var rows = new List<ParsedRow>(parsed.Rows.Count);
+        foreach (var row in parsed.Rows)
+        {
+            if (!row.Legs.Any(l => l.NeedsPrice)) { rows.Add(row); continue; }
+            var legs = new List<ImportLeg>(row.Legs.Count);
+            foreach (var leg in row.Legs)
+                legs.Add(leg.NeedsPrice && await MarketPriceAsync(leg, ct) is { } p
+                    ? leg with { Price = p.Price, Fee = leg.Fee + Math.Round(leg.UnitFee * p.Price, 2), Notes = $"{leg.Notes} · priced at {p.Source}" }
+                    : leg);
+            rows.Add(row with { Legs = legs });
+        }
+        return parsed with { Rows = rows };
+    }
+
+    private async Task<(decimal Price, string Source)?> MarketPriceAsync(ImportLeg leg, CancellationToken ct)
+    {
+        var at = leg.OccurredAt ?? DateTime.SpecifyKind(DateTime.ParseExact(leg.Date, "yyyy-MM-dd", CultureInfo.InvariantCulture).AddHours(12), DateTimeKind.Utc);
+        var key = $"{leg.Symbol}|{at:yyyy-MM-ddTHH}|{leg.Currency}";
+        if (PriceMemo.TryGetValue(key, out var known)) return known;
+        try
+        {
+            if (await market!.PriceAtAsync(leg.Symbol, at, null, ct) is not { Price: > 0 } point) return null;
+            var rate = point.Currency.Equals(leg.Currency, StringComparison.OrdinalIgnoreCase)
+                ? 1m : await market.FxRateAsync(point.Currency, leg.Currency, DateOnly.FromDateTime(at), ct);
+            if (rate is null) return null;
+            var source = point.Resolution == "hour"
+                ? $"the {point.At:yyyy-MM-dd HH:mm} UTC hourly price ({point.Provider})"
+                : $"the {point.At:yyyy-MM-dd} daily close ({point.Provider})";
+            return PriceMemo[key] = (Math.Round(point.Price * rate.Value, 8), source);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            return null; // unpriced this time; a later preview or import tries again
+        }
     }
 
     /// <summary>A keyed transaction needs refreshing when its source row's timing changed (pending → confirmed).</summary>
