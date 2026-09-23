@@ -266,30 +266,28 @@ For each symbol (or symbol+account):
 
 Live quotes are fetched per symbol. For each holding:
 
-- **Market value** = `quantity × live price`, converted to the user's base currency using
-  the `priceCurrency → baseCurrency` entry from `currency_rates` (defaulting to a factor of
-  1 when no rate exists).
-- **Cost basis** = `quantity × avg cost`, converted from the **account's** currency to the
-  base currency the same way.
+- **Market value** = `quantity × live price`, converted to the user's base currency with the
+  manual `currency_rates` entry (or the inverse of one) when there is one, otherwise the latest
+  ECB reference rate.
+- **Cost basis** = `quantity × avg cost`, converted from the currency the units were acquired
+  in to the base currency the same way.
 - Totals roll up per account and overall; `total_gain` = wealth − cost, and
   `total_gain_percent` = gain ÷ cost × 100.
 
 ### Portfolio value history (`WealthService.PortfolioHistoryAsync`)
 
-History replays transactions over historical prices:
+History replays transactions over cached daily closes, in the base currency:
 
-1. Determine active symbols (net quantity > 0) for the account/period.
-2. Fetch each symbol's historical close series from Yahoo (interval `1d` for ≤30-day
-   windows, otherwise `1wk`); fall back to the cached spot price if history is unavailable.
-3. Walk the union of dates in chronological order, replaying transactions up to each date
-   (`buy`/`transfer_in`/`dividend` add, `sell`/`transfer_out` subtract) and valuing the
-   running holdings at the price on (or most recently before) that date.
-4. Emit `{ date, value, cost, gain }` per date, rounded to cents.
-
-> **Intentional quirk (carried over):** portfolio history performs **no FX conversion** —
-> values and costs are summed in their native currencies. This matches the original app's
-> behaviour and is preserved on purpose. (The dashboard summary, by contrast, *does* convert
-> to the base currency.)
+1. The window starts at the period start or the first transaction, whichever is later.
+   Every symbol held at some point in the window counts, including ones sold since.
+2. Each symbol's daily closes come from `MarketDataService` (cached); today's point uses the
+   latest quote, the same one the dashboard shows.
+3. Points are daily for windows up to ~3 months, weekly beyond. Transactions are replayed up
+   to each date and holdings valued at the close on (or most recently before) that date.
+4. Values and costs are converted to the base currency at that day's ECB rate (today: the
+   dashboard's rate). Cash accounts count at their balance. The cost line is the remaining
+   average cost, by the currency it was paid in.
+5. Emit `{ date, value, cost, gain }` per date, rounded to cents.
 
 ### Daily-wealth snapshot (`SaveDailyWealthAsync`)
 

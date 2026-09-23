@@ -19,6 +19,12 @@ namespace Server.Domain.Holdings;
 /// </list>
 /// Quantities are exact decimals, so any positive balance — however small — is a holding.
 /// </summary>
+/// <summary>The cost basis remaining after a transaction, by the currency it was paid in.</summary>
+public sealed record CostPoint(Transaction Transaction, IReadOnlyDictionary<string, decimal> CostByCurrency)
+{
+    public decimal TotalCost => CostByCurrency.Values.Sum();
+}
+
 public static class HoldingsCalculator
 {
     /// <summary>The replayed state of one position.</summary>
@@ -61,13 +67,16 @@ public static class HoldingsCalculator
             .ToList();
 
     /// <summary>
-    /// Total remaining cost basis after each transaction, in chronological order — the running
-    /// "invested" line of a value-history chart. Uses the same rules as the holdings.
+    /// Remaining cost basis after each transaction, in chronological order and by the currency it was
+    /// paid in — the running "invested" line of a value-history chart. Uses the same rules as the holdings.
     /// </summary>
-    public static IReadOnlyList<(Transaction Transaction, decimal TotalCost)> CostTimeline(IEnumerable<Transaction> transactions)
+    public static IReadOnlyList<CostPoint> CostTimeline(IEnumerable<Transaction> transactions)
     {
-        var timeline = new List<(Transaction, decimal)>();
-        Replay(transactions, (tx, positions) => timeline.Add((tx, positions.Values.Sum(p => p.Quantity > 0 ? p.Cost : 0))));
+        var timeline = new List<CostPoint>();
+        Replay(transactions, (tx, positions) => timeline.Add(new CostPoint(tx, positions.Values
+            .Where(p => p.Quantity > 0)
+            .GroupBy(p => p.Currency ?? "")
+            .ToDictionary(g => g.Key, g => g.Sum(p => p.Cost)))));
         return timeline;
     }
 
