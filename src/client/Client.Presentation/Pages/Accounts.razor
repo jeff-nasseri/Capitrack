@@ -7,6 +7,12 @@
 @inject NavigationManager Nav
 
 <div class="page">
+    @if (!_loaded)
+    {
+        <LoadingState Text="Loading accounts…" />
+    }
+    else
+    {
     <div class="grid" style="grid-template-columns:repeat(3, 1fr);">
         @foreach (var a in _accounts)
         {
@@ -50,12 +56,14 @@
             </div>
         </button>
     </div>
+    }
 </div>
 
 @code {
     private List<AccountDto> _accounts = [];
     private Dictionary<int, AccountSummaryDto> _values = [];
     private List<TagDto> _tags = [];
+    private bool _loaded;
     private string _base = "EUR";
 
     private RenderFragment Actions => @<button class="btn btn-pri btn-sm" @onclick="ShowAddAccount"><Icon Name="plus" /> Add account</button>;
@@ -76,6 +84,7 @@
         var summary = await summaryTask;
         _values = summary?.Accounts.ToDictionary(a => a.AccountId) ?? [];
         _base = summary?.BaseCurrency ?? _base;
+        _loaded = true;
     }
 
     private void Open(int id) => Nav.NavigateTo($"/accounts/{id}");

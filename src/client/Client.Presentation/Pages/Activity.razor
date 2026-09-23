@@ -36,7 +36,7 @@
 
     @if (_loading)
     {
-        <div class="loading-spinner">Loading…</div>
+        <LoadingState Text="Loading transactions…" />
     }
     else if (_transactions.Count == 0)
     {

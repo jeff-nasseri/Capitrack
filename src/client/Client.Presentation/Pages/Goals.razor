@@ -7,7 +7,7 @@
 <div class="page page-wide">
     @if (_loading)
     {
-        <div class="loading-spinner">Loading goals…</div>
+        <LoadingState Text="Loading goals…" />
     }
     else if (_goals.Count == 0)
     {

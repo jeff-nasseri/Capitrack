@@ -6,7 +6,7 @@
 <div class="page page-wide">
     @if (_loading)
     {
-        <div class="loading-spinner">Loading holdings…</div>
+        <LoadingState Text="Loading holdings…" />
     }
     else
     {
@@ -48,17 +48,12 @@
         var accounts = await Api.GetAsync<List<AccountDto>>("/api/accounts") ?? [];
         State.Accounts = accounts;
 
-        var all = new List<EnrichedHolding>();
-        foreach (var a in accounts)
+        var perAccount = await Task.WhenAll(accounts.Select(async a => (Account: a, Holdings: await Api.GetAsync<List<HoldingDto>>($"/api/accounts/{a.Id}/holdings") ?? [])));
+        var all = perAccount.SelectMany(x => x.Holdings.Select(h => new EnrichedHolding
         {
-            var hs = await Api.GetAsync<List<HoldingDto>>($"/api/accounts/{a.Id}/holdings") ?? [];
-            foreach (var h in hs)
-                all.Add(new EnrichedHolding
-                {
-                    Symbol = h.Symbol, Quantity = h.Quantity, AvgCost = h.AvgCost, TotalCost = h.TotalCost,
-                    TransactionCount = h.TransactionCount, AccountId = a.Id, AccountCurrency = a.Currency
-                });
-        }
+            Symbol = h.Symbol, Quantity = h.Quantity, AvgCost = h.AvgCost, TotalCost = h.TotalCost,
+            TransactionCount = h.TransactionCount, AccountId = x.Account.Id, AccountCurrency = x.Account.Currency
+        })).ToList();
 
         var symbols = all.Select(h => h.Symbol).Distinct().ToList();
         var prices = symbols.Count > 0

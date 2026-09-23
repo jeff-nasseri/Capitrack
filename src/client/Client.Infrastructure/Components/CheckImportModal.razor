@@ -16,10 +16,7 @@
             <div class="modal-body ci-body">
                 @if (_phase == Phase.Loading)
                 {
-                    <div class="loading-spinner ci-loading" role="status">
-                        <Icon Name="refresh" Class="spinning" Width="20" Height="20" />
-                        <div>Reading @_fileCount file@(_fileCount == 1 ? "" : "s") and checking them against this account…</div>
-                    </div>
+                    <LoadingState Text="@($"Reading {_fileCount} file{(_fileCount == 1 ? "" : "s")} and checking them against this account…")" />
                 }
                 else if (_phase == Phase.Error)
                 {

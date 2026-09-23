@@ -13,6 +13,12 @@
 }
 
 <div class="page page-wide">
+    @if (_loadedId != Id)
+    {
+        <LoadingState Text="Loading account…" />
+    }
+    else
+    {
     @* hero *@
     <div class="row-between" style="align-items:flex-start;">
         <div>
@@ -45,7 +51,7 @@
             }
             else
             {
-                <PeriodChart Data="_chart" Labels="_labels" Currency="@_base" Height="230" Selected="@_period" SelectedChanged="OnPeriod" />
+                <PeriodChart Data="_chart" Labels="_labels" Currency="@_base" Height="230" Selected="@_period" SelectedChanged="OnPeriod" Loading="_chartLoading" />
             }
         </div>
     </div>
@@ -105,6 +111,7 @@
         <div class="section-title mt-6" style="margin-bottom:12px;">Holdings</div>
         <HoldingsTable Holdings="_holdings" AccountId="Id" />
     }
+    }
 </div>
 
 @code {
@@ -117,6 +124,8 @@
     private List<string> _labels = [];
     private string _base = "USD";
     private string _period = "3m";
+    private int? _loadedId;
+    private bool _chartLoading = true;
     private decimal _totalValue, _totalCost, _invested, _contribution, _gain;
     private double _gainPct;
     private List<TagDto> _tags = [];
@@ -169,6 +178,7 @@
         if (IsCash)
         {
             BuildCash();
+            _loadedId = Id;
             StateHasChanged();
             return;
         }
@@ -214,6 +224,7 @@
 
         _gain = _totalValue - _totalCost;
         _gainPct = _totalCost > 0 ? (double)(_gain / _totalCost * 100) : 0;
+        _loadedId = Id;
         StateHasChanged();
         await LoadChart(_period);
     }
@@ -255,9 +266,13 @@
     private async Task LoadChart(string period)
     {
         _period = period;
+        _chartLoading = true;
+        StateHasChanged();
         var data = await Api.GetAsync<List<PortfolioHistoryPointDto>>($"/api/prices/portfolio/history?account_id={Id}&period={period}") ?? [];
+        if (period != _period) return; // a newer period was picked meanwhile
         _chart = data.Select(p => (double)p.Value).ToList();
         _labels = BuildLabels(data.Select(p => p.Date).ToList());
+        _chartLoading = false;
         StateHasChanged();
     }
 

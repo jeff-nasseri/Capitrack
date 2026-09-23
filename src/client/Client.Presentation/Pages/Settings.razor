@@ -30,7 +30,11 @@
 
         @* right panel *@
         <div>
-            @if (_panel == "accounts")
+            @if (!_loaded)
+            {
+                <LoadingState Text="Loading settings…" />
+            }
+            else if (_panel == "accounts")
             {
                 <SettingsPanel IconName="wallet" Title="Accounts">
                     <Action><button class="btn btn-pri btn-sm" @onclick="() => ShowAccount(null)"><Icon Name="plus" /> Add</button></Action>
@@ -534,6 +538,7 @@
     private bool _pwOk;
     private List<MarketDataProviderDto> _providers = [];
     private bool _providerBusy;
+    private bool _loaded;
 
     private static readonly (string Key, string Label)[] ProviderClasses =
         [("crypto", "Crypto"), ("stock", "Stocks & ETFs"), ("metal", "Precious metals"), ("fx", "Currency rates")];
@@ -623,22 +628,26 @@
     protected override async Task OnInitializedAsync()
     {
         TopBar.Set("Settings");
-        var session = await Api.GetAsync<SessionDto>("/api/auth/session");
+        var sessionTask = Api.GetAsync<SessionDto>("/api/auth/session");
+        var aboutTask = Api.GetAsync<AboutDto>("/api/settings/about");
+        var dbTask = Api.GetAsync<DatabaseInfoDto>("/api/settings/database");
+        var providersTask = Api.GetAsync<List<MarketDataProviderDto>>("/api/settings/providers");
+        await Task.WhenAll(sessionTask, aboutTask, dbTask, providersTask);
+        var session = await sessionTask;
         _base = session?.BaseCurrency ?? "EUR";
         _twoFactorEnabled = session?.TwoFactorEnabled ?? false;
         _sessionLifetime = session?.SessionLifetimeMinutes ?? 120;
-        var about = await Api.GetAsync<AboutDto>("/api/settings/about");
-        _version = about?.Version ?? "1.0.0";
-        var db = await Api.GetAsync<DatabaseInfoDto>("/api/settings/database");
+        _version = (await aboutTask)?.Version ?? "1.0.0";
+        var db = await dbTask;
         if (db is not null)
         {
             _dbPath = db.Path;
             _dbHealthy = db.Exists;
             _dbStatus = db.Exists ? "Database file exists and is accessible." : "Database file will be created at this location.";
         }
-        _providers = await Api.GetAsync<List<MarketDataProviderDto>>("/api/settings/providers") ?? [];
-        await LoadAll();
-        await LoadAccess();
+        _providers = await providersTask ?? [];
+        await Task.WhenAll(LoadAll(), LoadAccess());
+        _loaded = true;
     }
 
     private async Task LoadAll()

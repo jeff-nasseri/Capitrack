@@ -1,5 +1,12 @@
 <div>
-    <AreaChart Data="@Data" Currency="@Currency" Height="@Height" Labels="@Labels" Stroke="@Stroke" />
+    @if (Loading)
+    {
+        <div style="height:@(Height)px;display:flex;align-items:center;justify-content:center;"><LoadingState Text="Loading chart…" /></div>
+    }
+    else
+    {
+        <AreaChart Data="@Data" Currency="@Currency" Height="@Height" Labels="@Labels" Stroke="@Stroke" />
+    }
     <div class="flex" style="justify-content:center;gap:2px;margin-top:10px;">
         <div class="pill-toggle">
             @foreach (var p in Periods)
@@ -18,6 +25,7 @@
     [Parameter] public string Stroke { get; set; } = "var(--pri-2)";
     [Parameter] public string Selected { get; set; } = "3m";
     [Parameter] public EventCallback<string> SelectedChanged { get; set; }
+    [Parameter] public bool Loading { get; set; }
 
     private static readonly string[] Periods = ["1w", "1m", "3m", "6m", "ytd", "1y", "5y", "all"];
 

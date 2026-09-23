@@ -9,6 +9,10 @@
             <button class="btn-icon" title="Previous" @onclick="Prev"><Icon Name="chevL" /></button>
             <span style="font-weight:750;font-size:1.05rem;min-width:150px;text-align:center;">@Title</span>
             <button class="btn-icon" title="Next" @onclick="Next"><Icon Name="chevR" /></button>
+            @if (_fetching && !_loading)
+            {
+                <LoadingState Compact="true" Text="Loading…" />
+            }
         </div>
         <div class="flex gap-2">
             <div class="seg">
@@ -23,7 +27,7 @@
 
     @if (_loading)
     {
-        <div class="loading-spinner">Loading calendar…</div>
+        <LoadingState Text="Loading calendar…" />
     }
     else if (_view == "month")
     {
@@ -47,6 +51,7 @@
     private List<TransactionDto> _transactions = [];
     private Dictionary<string, DailyWealthDto> _wealth = [];
     private bool _loading = true;
+    private bool _fetching;
 
     protected override async Task OnInitializedAsync()
     {
@@ -65,8 +70,11 @@
             "year" => (new DateTime(_current.Year, 1, 1), new DateTime(_current.Year, 12, 31)),
             _ => (new DateTime(_current.Year, _current.Month, 1), new DateTime(_current.Year, _current.Month, DateTime.DaysInMonth(_current.Year, _current.Month)))
         };
+        _fetching = true;
+        StateHasChanged();
         var rows = await Api.GetAsync<List<DailyWealthDto>>($"/api/prices/daily-wealth?start={start:yyyy-MM-dd}&end={end:yyyy-MM-dd}") ?? [];
         _wealth = rows.ToDictionary(r => r.Date);
+        _fetching = false;
     }
 
     private async Task Prev() { _current = _view switch { "week" => _current.AddDays(-7), "year" => _current.AddYears(-1), _ => _current.AddMonths(-1) }; await LoadWealth(); }

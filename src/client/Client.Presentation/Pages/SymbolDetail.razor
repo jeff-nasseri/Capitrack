@@ -26,6 +26,12 @@
         </div>
     </div>
 
+    @if (_loadedKey != $"{AccountId}/{Symbol}")
+    {
+        <LoadingState Text="Loading position…" />
+    }
+    else
+    {
     @* price + delta *@
     <div class="flex gap-2" style="align-items:flex-end;margin-top:18px;">
         <div class="bignum tnum">@Format.Money(_price, _currency)</div>
@@ -39,7 +45,7 @@
         <div class="flex-col gap-4">
             <div class="card" style="overflow:hidden;">
                 <div style="padding:16px 12px;">
-                    <PeriodChart Data="_chart" Labels="_labels" Currency="@_currency" Height="230" Selected="@_period" SelectedChanged="LoadChart" />
+                    <PeriodChart Data="_chart" Labels="_labels" Currency="@_currency" Height="230" Selected="@_period" SelectedChanged="LoadChart" Loading="_chartLoading" />
                 </div>
             </div>
 
@@ -147,6 +153,7 @@
             <button class="btn btn-ghost btn-block mt-4" style="width:100%;" @onclick="ShowAddTx"><Icon Name="plus" /> Add transaction</button>
         </div>
     </div>
+    }
 </div>
 
 @code {
@@ -165,6 +172,8 @@
     private decimal _price, _priceChange, _totalQty, _avgCost, _bookValue, _marketValue, _totalReturn, _todayReturn;
     private double _changePct, _totalReturnPct, _portfolioPct;
     private int? _openTxId;
+    private string? _loadedKey;
+    private bool _chartLoading = true;
 
     private static readonly (string Label, bool IsVolume)[] _overviewStats =
         [("Open", false), ("Close", false), ("High", false), ("Low", false), ("Prev. Close", false), ("Volume", true)];
@@ -212,6 +221,7 @@
         var valueInBase = (await fxTask ?? new ExchangeRatesDto()).ToBase(_marketValue, _currency);
         _portfolioPct = totalWealth > 0 ? (double)(valueInBase / totalWealth * 100) : 0;
 
+        _loadedKey = $"{AccountId}/{Symbol}";
         StateHasChanged();
         await LoadChart(_period);
     }
@@ -219,10 +229,14 @@
     private async Task LoadChart(string period)
     {
         _period = period;
+        _chartLoading = true;
+        StateHasChanged();
         var data = await Api.GetAsync<List<HistoryPointDto>>($"/api/prices/history/{Uri.EscapeDataString(Symbol)}?period={period}");
+        if (period != _period) return; // a newer period was picked meanwhile
         var points = (data ?? []).Where(d => d.Close != null).ToList();
         _chart = points.Select(d => (double)(d.Close ?? 0)).ToList();
         _labels = BuildLabels(points.Select(d => d.Date).ToList());
+        _chartLoading = false;
         StateHasChanged();
     }
 
