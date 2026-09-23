@@ -252,15 +252,20 @@ All aggregation math is centralized so it stays consistent and testable.
 
 ### Quantity and cost (`HoldingsCalculator`)
 
-For each symbol (or symbol+account):
+Positions are replayed per symbol and account in chronological order (date, then instant, then
+sends before receipts, then id), with exact decimals and the average-cost method:
 
-- **Quantity** = Σ(`buy` + `transfer_in` quantities) − Σ(`sell` + `transfer_out` quantities).
-- Holdings with quantity ≤ `1e-8` are **filtered out** (treated as fully closed).
-- **Weighted average cost** = (Σ buy/transfer_in `quantity × price`) ÷ (Σ buy/transfer_in
-  quantity).
-- **Total cost** (per-symbol holdings only) = Σ(`buy`: `quantity × price + fee`) +
-  Σ(`sell`: −(`quantity × price − fee`)); other types contribute 0. Per-symbol holdings are
-  ordered by total cost descending.
+- **buy:** + quantity; cost += `quantity × price + fee`.
+- **transfer in:** + quantity; cost += the cost carried by the matching transfer out (same source
+  transaction id and symbol) when the coins came from another of your accounts, otherwise their
+  value when received (`quantity × price + fee`).
+- **sell, transfer out, fee:** − quantity, and the cost of those units at the current average
+  cost is removed (a partial sale leaves the average unchanged). A staked transfer out keeps
+  its units.
+- **dividend / interest:** no change to units or cost.
+
+Any positive balance, however small, is a holding. The cost basis is kept in the currency the
+units were acquired in.
 
 ### Dashboard wealth (`WealthService.DashboardSummaryAsync`)
 
