@@ -68,6 +68,10 @@ public sealed class SettingsController(IMediator mediator) : ControllerBase
     [HttpGet("providers")]
     public async Task<IActionResult> Providers() => Ok(await mediator.Send(new GetProvidersQuery()));
 
+    /// <summary>Sets which market-data providers are used, in what order, per asset class.</summary>
+    [HttpPut("providers")]
+    public async Task<IActionResult> SetProviders([FromBody] SetProviderOrderCommand command) => Ok(await mediator.Send(command));
+
     [HttpGet("about")]
     public async Task<IActionResult> About() => Ok(await mediator.Send(new GetAboutQuery()));
 }

@@ -16,7 +16,7 @@
 **Personal wealth tracking and investment portfolio management platform.**
 
 Capitrack is an open-source, self-hosted app for tracking investments across multiple
-accounts — stocks, crypto, and commodities — with real-time prices from Yahoo Finance,
+accounts — stocks, crypto, and commodities — with prices from free market-data providers (Kraken, Bitvavo, CoinGecko, Twelve Data, ECB, Yahoo Finance),
 portfolio analytics, CSV import, financial goals, and a wealth calendar.
 
 Built with a **.NET 10 (ASP.NET Core) API** and a **Blazor WebAssembly** frontend.
@@ -44,7 +44,7 @@ To choose your own password instead, copy `.env.example` to `.env` and set
 ## Features
 
 - Multi-account portfolio tracking (stocks, crypto, commodities)
-- Real-time prices from Yahoo Finance
+- Live and historical prices from free providers, chosen and ordered per asset class, with fallback and a local price cache
 - CSV import (Revolut, Trezor, or generic) with auto-detection and de-duplication
 - Dashboard, holdings, and per-account / per-symbol analytics with interactive charts
 - Financial goals and a wealth calendar

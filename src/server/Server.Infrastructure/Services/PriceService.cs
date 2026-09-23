@@ -2,8 +2,8 @@ using Server.Infrastructure.Persistence;
 
 namespace Server.Infrastructure.Services;
 
-/// <summary>Quote retrieval with a 5-minute price-cache + stale fallback.</summary>
-public sealed class PriceService(CapitrackDbContext db, IYahooFinanceClient yahoo) : IPriceService
+/// <summary>Quote retrieval (through the configured providers, with fallback) with a 5-minute price cache + stale fallback.</summary>
+public sealed class PriceService(CapitrackDbContext db, IMarketDataService market) : IPriceService
 {
     private static readonly TimeSpan CacheTtl = TimeSpan.FromMinutes(5);
 
@@ -14,7 +14,7 @@ public sealed class PriceService(CapitrackDbContext db, IYahooFinanceClient yaho
         var fresh = await db.PriceCache.FirstOrDefaultAsync(p => p.Symbol == symbol && p.UpdatedAt > cutoff);
         if (fresh != null) return ToDto(fresh, stale: false);
 
-        var live = await yahoo.QuoteAsync(symbol);
+        var live = await market.QuoteAsync(symbol);
         if (live != null)
         {
             await UpsertAsync(live);

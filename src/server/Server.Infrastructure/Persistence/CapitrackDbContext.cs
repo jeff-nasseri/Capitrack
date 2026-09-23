@@ -25,6 +25,9 @@ public class CapitrackDbContext(DbContextOptions<CapitrackDbContext> options) : 
     public DbSet<TransactionTag> TransactionTags => Set<TransactionTag>();
     public DbSet<LoginAttempt> LoginAttempts => Set<LoginAttempt>();
     public DbSet<BlacklistedIp> BlacklistedIps => Set<BlacklistedIp>();
+    public DbSet<PriceHistoryRecord> PriceHistory => Set<PriceHistoryRecord>();
+    public DbSet<PriceCoverageRecord> PriceCoverage => Set<PriceCoverageRecord>();
+    public DbSet<AppSettingRecord> AppSettings => Set<AppSettingRecord>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -154,6 +157,24 @@ public class CapitrackDbContext(DbContextOptions<CapitrackDbContext> options) : 
         {
             e.HasIndex(x => x.IpAddress);
             e.HasIndex(x => x.ExpiresAt);
+        });
+
+        b.Entity<PriceHistoryRecord>(e =>
+        {
+            e.ToTable("PriceHistory");
+            e.HasKey(x => new { x.Symbol, x.Provider, x.Date });
+        });
+
+        b.Entity<PriceCoverageRecord>(e =>
+        {
+            e.ToTable("PriceCoverage");
+            e.HasKey(x => new { x.Symbol, x.Provider });
+        });
+
+        b.Entity<AppSettingRecord>(e =>
+        {
+            e.ToTable("AppSettings");
+            e.HasKey(x => x.Key);
         });
     }
 }

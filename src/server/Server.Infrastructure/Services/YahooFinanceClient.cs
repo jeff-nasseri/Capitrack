@@ -143,6 +143,29 @@ public class YahooFinanceClient : IYahooFinanceClient
         return list;
     }
 
+    public async Task<(List<HistoryPointDto> Points, string? Currency)> ChartRangeAsync(string symbol, DateTime from, DateTime to, string interval)
+    {
+        symbol = symbol.ToUpperInvariant();
+        var p1 = new DateTimeOffset(DateTime.SpecifyKind(from, DateTimeKind.Utc)).ToUnixTimeSeconds();
+        var p2 = new DateTimeOffset(DateTime.SpecifyKind(to, DateTimeKind.Utc)).ToUnixTimeSeconds();
+        var url = $"https://query1.finance.yahoo.com/v8/finance/chart/{Uri.EscapeDataString(symbol)}?period1={p1}&period2={p2}&interval={interval}";
+        var list = new List<HistoryPointDto>();
+        var resp = await _http.GetAsync(url);
+        if ((int)resp.StatusCode == 404) return (list, null); // unknown symbol
+        if (!resp.IsSuccessStatusCode) throw new HttpRequestException($"Yahoo {(int)resp.StatusCode}");
+        using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+        var result = doc.RootElement.GetProperty("chart").GetProperty("result");
+        if (result.ValueKind != JsonValueKind.Array || result.GetArrayLength() == 0) return (list, null);
+        var r0 = result[0];
+        var currency = r0.TryGetProperty("meta", out var meta) ? GetString(meta, "currency") : null;
+        if (!r0.TryGetProperty("timestamp", out var ts)) return (list, currency);
+        var quote = r0.GetProperty("indicators").GetProperty("quote")[0];
+        var closes = quote.TryGetProperty("close", out var c) ? c : default;
+        for (var i = 0; i < ts.GetArrayLength(); i++)
+            list.Add(new HistoryPointDto(DateTimeOffset.FromUnixTimeSeconds(ts[i].GetInt64()).UtcDateTime, Index(closes, i), null, null, null, null));
+        return (list, currency);
+    }
+
     public async Task<List<SearchResultDto>> SearchAsync(string query)
     {
         var url = $"https://query1.finance.yahoo.com/v1/finance/search?q={Uri.EscapeDataString(query)}";

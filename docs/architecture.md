@@ -189,9 +189,37 @@ Two intentional exceptions:
   `{ "currentPassword": ..., "newPassword": ... }`. This is enforced with explicit
   `[JsonPropertyName]` attributes on `PasswordRequest` and matches the original API.
 
+## Market data providers
+
+Every price lookup goes through `MarketDataService` (`IMarketDataService`), which routes it to
+the providers chosen in **Settings > Market Data**: an ordered list per asset class (crypto,
+stock, metal, fx), stored in the `AppSettings` table. The first provider is asked first; when it
+fails, is not configured (missing API key), cannot price the symbol, or lacks part of a date
+range, the next one is tried. Providers only ever receive a symbol and dates.
+
+| Provider | Asset classes | Key | Free-tier limits |
+|---|---|---|---|
+| Kraken | crypto (USD/EUR pairs) | none | ~1 request/s; only the 720 most recent candles (~2 years daily) |
+| Bitvavo | crypto (prices in EUR) | none | 1,000 request-weight/min; full daily and hourly history |
+| CoinGecko | crypto (fixed id map) | optional `COINGECKO_DEMO_API_KEY` | ~9 calls/min keyless, ~30 with a Demo key; past 365 days only |
+| Twelve Data | US stocks/ETFs, forex, crypto, gold/silver | `TWELVE_DATA_API_KEY` | 800 credits/day, 8 requests/min |
+| ECB | fx (euro reference rates) | none | working days since 1999 |
+| Yahoo Finance | all | none | unofficial, no published terms; last fallback |
+
+Defaults: crypto Kraken → Bitvavo → CoinGecko → Yahoo; stocks and metals Yahoo → Twelve Data;
+fx ECB → Yahoo. Each provider has its own rate gate.
+
+- **Daily closes are cached** in `PriceHistory` (per symbol, provider and UTC day) with a
+  `PriceCoverage` record of the range already asked, so a past close is fetched once and only
+  missing days are requested later. Today's close is never cached (it is not final).
+- **Price at a moment** (`PriceAtAsync`): the hourly candle containing the instant when a
+  provider has intraday history for that date; otherwise, as a documented fallback, the close
+  of that UTC day.
+- **FX** (`FxRateAsync`): the last ECB reference rate published on or before the date.
+
 ## Yahoo Finance client
 
-`YahooFinanceClient` reimplements only the subset of Yahoo's endpoints the app needs:
+Yahoo is one provider among several (see above). `YahooFinanceClient` reimplements only the subset of Yahoo's endpoints the app needs:
 quote, chart (history), and search. It uses one `HttpClient` with a cookie container and a
 desktop browser `User-Agent`.
 
