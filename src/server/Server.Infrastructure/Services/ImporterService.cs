@@ -1,3 +1,4 @@
+using Server.Domain.Holdings;
 using Server.Domain.Transactions;
 using Server.Infrastructure.Persistence;
 using Server.Infrastructure.Services.Import;
@@ -190,39 +191,92 @@ public sealed class ImporterService(CapitrackDbContext db) : IImporterService
         return await ApplyAsync(plan);
     }
 
-    public async Task<PreviewFileDto> PreviewAsync(string fileName, string content, int accountId)
+    public async Task<ImportResultDto> ImportFilesAsync(int accountId, IReadOnlyList<ImportFileInput> files) =>
+        await ApplyAsync(await PlanAsync(accountId, files.Select(ToRequest).ToList()));
+
+    public async Task<ImportPreviewDto> PreviewAsync(int accountId, IReadOnlyList<ImportFileInput> files)
     {
-        var plan = await PlanAsync(accountId, [new ImportFileRequest(fileName, content)]);
+        var plan = await PlanAsync(accountId, files.Select(ToRequest).ToList());
         var account = await db.Accounts.FindAsync(accountId);
         var accountIsCrypto = account?.Type.Value is "crypto";
-        var file = plan.Files[0];
 
-        var legs = new List<PreviewTransactionDto>();
-        foreach (var leg in file.Rows.SelectMany(r => r.Legs))
+        // balances now, and after the plan is applied (updated/adopted rows take their new values,
+        // new legs are added) — computed by the same holdings rules the app displays
+        var current = await db.Transactions.Where(t => t.AccountId == accountId).ToListAsync();
+        var replaced = plan.Legs.Where(l => l.Status is LegStatus.Update or LegStatus.Adopt)
+            .ToDictionary(l => l.Existing!.Id, l => l);
+        var simulated = current
+            .Select(t => replaced.TryGetValue(t.Id, out var pl) ? Transient(accountId, pl.Leg, t.IsStaked) : t)
+            .Concat(plan.Legs.Where(l => l.Status == LegStatus.New).Select(l => Transient(accountId, l.Leg, l.Staked)))
+            .ToList();
+        var before = Balances(current);
+        var after = Balances(simulated);
+
+        var result = new List<FilePreviewDto>(plan.Files.Count);
+        foreach (var file in plan.Files)
         {
-            var l = leg.Leg;
-            legs.Add(new PreviewTransactionDto(
-                legs.Count, l.Symbol, l.Type, l.Quantity, l.Price, l.Fee, l.Currency, l.Date, l.Notes,
-                leg.Status is LegStatus.Duplicate or LegStatus.Adopt,
-                l.Type == "transfer_out" && (l.CanStake || accountIsCrypto), l.OccurredAt, l.ExternalId, l.Key));
+            var rows = new List<PreviewRowDto>(file.Rows.Count);
+            foreach (var pr in file.Rows)
+            {
+                var row = pr.Row;
+                if (row.IsRejected)
+                {
+                    rows.Add(new PreviewRowDto(row.Row, "rejected", row.Rejection, null, null, false, []));
+                    continue;
+                }
+                var legs = row.Legs.Select((leg, i) => new PreviewLegDto(leg.Symbol, leg.Type, leg.Quantity, leg.Price, leg.Fee, leg.Currency,
+                    pr.Legs.Count > i ? pr.Legs[i].Status.ToString().ToLowerInvariant() : "unselected")).ToList();
+                var first = row.Legs[0];
+                var canStake = row.Legs.Any(l => l.Type == "transfer_out" && (l.CanStake || accountIsCrypto));
+                string status; string? reason = null;
+                if (pr.Legs.Count == 0) status = "unselected";
+                else if (pr.Legs.Any(l => l.Status == LegStatus.New)) status = "new";
+                else if (pr.Legs.Any(l => l.Status == LegStatus.Update)) { status = "update"; reason = "Already imported; its timing changed (e.g. pending → confirmed), so it will be refreshed"; }
+                else
+                {
+                    status = "duplicate";
+                    reason = pr.Legs.Any(l => l.Status == LegStatus.Adopt)
+                        ? "Already in this account from an earlier import; it will be linked to this row"
+                        : "Already imported";
+                }
+                rows.Add(new PreviewRowDto(row.Row, status, reason, first.Date, first.OccurredAt, canStake && status == "new", legs));
+            }
+
+            var importable = file.Rows.Where(r => !r.Row.IsRejected).SelectMany(r => r.Row.Legs).ToList();
+            var symbols = importable.Select(l => l.Symbol).Distinct().OrderBy(x => x, StringComparer.Ordinal);
+            var assets = symbols.Select(sym => new AssetSummaryDto(
+                sym,
+                importable.Where(l => l.Symbol == sym && (l.Type is "transfer_in" or "buy")).Sum(l => l.Quantity),
+                importable.Where(l => l.Symbol == sym && (l.Type is "transfer_out" or "sell")).Sum(l => l.Quantity),
+                importable.Where(l => l.Symbol == sym && l.Type == "fee").Sum(l => l.Quantity),
+                before.GetValueOrDefault(sym),
+                after.GetValueOrDefault(sym))).ToList();
+
+            var counts = importable.GroupBy(l => l.Type).OrderBy(g => g.Key, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.Count());
+            var summary = new FileSummaryDto(
+                rows.Count,
+                rows.Count(r => r.Status == "new"),
+                rows.Count(r => r.Status is "duplicate" or "update"),
+                rows.Count(r => r.Status == "update"),
+                rows.Count(r => r.Status == "rejected"),
+                rows.Count(r => r.Status == "unselected"),
+                counts, assets);
+            result.Add(new FilePreviewDto(file.FileName, file.Parsed.Format, rows, summary));
         }
-        var rejected = file.Rows.Where(r => r.Row.IsRejected).Select(r => new RejectedRowDto(r.Row.Row, r.Row.Rejection!)).ToList();
-        return new PreviewFileDto(fileName, file.Parsed.Format, legs, rejected);
+        return new ImportPreviewDto(result);
     }
 
-    public async Task<ImportResultDto> ImportSelectedAsync(int accountId, IEnumerable<SelectedTransactionDto> transactions)
-    {
-        // legs chosen in a preview, identified by their import keys
-        var list = transactions.ToList();
-        var existingKeys = (await db.Transactions.Where(t => t.AccountId == accountId && t.ImportKey != null)
-            .Select(t => t.ImportKey!).ToListAsync()).ToHashSet(StringComparer.Ordinal);
-        var legs = list.Select(tx => new PlannedLeg(
-            new ImportLeg(tx.Symbol, tx.Type, tx.Quantity, tx.Price, tx.Fee, tx.Currency, tx.Date, tx.Notes ?? "", tx.OccurredAt, tx.ExternalId,
-                Key: tx.ImportKey ?? ""),
-            tx.ImportKey is { Length: > 0 } k && !existingKeys.Add(k) ? LegStatus.Duplicate : LegStatus.New,
-            null, tx.IsStaked && tx.Type == "transfer_out")).ToList();
-        var parsed = new ParsedFile("selected", [], []);
-        var plan = new ImportPlan(accountId, [new PlannedFile("selected", parsed, [new PlannedRow(new ParsedRow(0, [], null), legs)])]);
-        return await ApplyAsync(plan);
-    }
+    private static ImportFileRequest ToRequest(ImportFileInput f) => new(
+        f.FileName, f.Content,
+        f.Selection?.Rows is { } rows ? rows.ToHashSet() : null,
+        f.Selection?.Staked is { } staked ? staked.ToHashSet() : null);
+
+    /// <summary>A not-persisted transaction, used only to compute balances a plan would produce.</summary>
+    private static Transaction Transient(int accountId, ImportLeg leg, bool staked) =>
+        Transaction.Create(accountId, Symbol.Create(leg.Symbol), TransactionType.From(leg.Type), Quantity.Create(leg.Quantity),
+            leg.Price, leg.Fee, CurrencyCode.Create(leg.Currency), TradeDate.Create(leg.Date), leg.Notes,
+            isStaked: staked && leg.Type == "transfer_out", occurredAt: leg.OccurredAt, externalId: leg.ExternalId);
+
+    private static Dictionary<string, decimal> Balances(IEnumerable<Transaction> txs) =>
+        HoldingsCalculator.ForAccount(txs).ToDictionary(h => h.Symbol.Value, h => h.Quantity);
 }

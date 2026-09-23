@@ -2,11 +2,13 @@ using Server.Application.Common.Exceptions;
 
 namespace Server.Application.Transactions.Commands;
 
-/// <summary>Imports a user-selected set of transactions (from a Check &amp; Import preview) into an account.</summary>
+/// <summary>
+/// Imports the rows the user selected in a Check &amp; Import preview. The files themselves are sent
+/// again and re-parsed on the server, so what is imported is exactly what was previewed.
+/// </summary>
 /// <param name="AccountId">The target account's identifier.</param>
-/// <param name="Transactions">The transactions the user chose to import (with any per-row stake flags).</param>
-public record ImportSelectedCommand(int AccountId, List<SelectedTransactionDto> Transactions)
-    : IRequest<ImportResultDto>;
+/// <param name="Files">The files with their row selections and stake flags.</param>
+public record ImportSelectedCommand(int AccountId, List<ImportFileInput> Files) : IRequest<ImportResultDto>;
 
 /// <summary>Handles <see cref="ImportSelectedCommand"/>.</summary>
 public sealed class ImportSelectedHandler(
@@ -15,7 +17,7 @@ public sealed class ImportSelectedHandler(
     ILogger<ImportSelectedHandler> logger)
     : IRequestHandler<ImportSelectedCommand, ImportResultDto>
 {
-    /// <summary>Verifies the account exists, then imports the selected transactions (with fingerprint dedup).</summary>
+    /// <summary>Verifies the account exists, then imports the selected rows atomically.</summary>
     public async Task<ImportResultDto> Handle(ImportSelectedCommand request, CancellationToken cancellationToken)
     {
         logger.LogInformation("Handling {Request}", nameof(ImportSelectedCommand));
@@ -23,6 +25,6 @@ public sealed class ImportSelectedHandler(
         if (!await accounts.ExistsAsync(request.AccountId, cancellationToken))
             throw new NotFoundException("Account not found");
 
-        return await importer.ImportSelectedAsync(request.AccountId, request.Transactions ?? []);
+        return await importer.ImportFilesAsync(request.AccountId, request.Files);
     }
 }

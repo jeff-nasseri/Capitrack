@@ -41,7 +41,19 @@
                     <div class="@(_result.Error is null ? "success-message" : "error-message")" style="margin-top:14px;">
                         @if (_result.Error is null)
                         {
-                            <strong>Import complete.</strong> @($"Imported {_result.Imported} · Skipped {_result.Skipped} · Total {_result.Total}")
+                            <strong>Import complete.</strong> @($"{_result.Total} rows read · {_result.Imported} transactions added · {_result.Skipped} already present")
+                            @if (_result.Updated > 0) { <span>@($" · {_result.Updated} refreshed")</span> }
+                            @if (_result.Rejected > 0) { <span>@($" · {_result.Rejected} rows not importable")</span> }
+                            @if (_result.Errors.Count > 0) { <div class="error-message mt-2">@string.Join(" ", _result.Errors)</div> }
+                            @if (_result.Rejections.Count > 0)
+                            {
+                                <details class="mt-2">
+                                    <summary class="sub" style="cursor:pointer;">Why @_result.Rejected row@(_result.Rejected == 1 ? " was" : "s were") not imported</summary>
+                                    <ul class="sub" style="margin:6px 0 0 18px;font-size:0.8rem;line-height:1.5;">
+                                        @foreach (var reason in _result.Rejections) { <li>@reason</li> }
+                                    </ul>
+                                </details>
+                            }
                         }
                         else
                         {
