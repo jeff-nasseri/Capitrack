@@ -4,11 +4,12 @@ using CsvHelper;
 using CsvHelper.Configuration;
 using Server.Domain.Transactions;
 using Server.Infrastructure.Persistence;
+using Server.Infrastructure.Services.Import;
 
 namespace Server.Infrastructure.Services;
 
 /// <summary>Port of services/importer.ts — format detection, four parsers, fingerprint dedup.</summary>
-public sealed partial class ImporterService(CapitrackDbContext db) : IImporterService
+public sealed class ImporterService(CapitrackDbContext db) : IImporterService
 {
     private static readonly string[] ValidTypes =
         ["buy", "sell", "transfer_in", "transfer_out", "dividend", "interest", "fee"];
@@ -18,9 +19,12 @@ public sealed partial class ImporterService(CapitrackDbContext db) : IImporterSe
     // ---- CSV parsing into header->value dictionaries (csv-parse columns:true equivalent) ----
     private static (List<Dictionary<string, string>> Records, List<string> Headers) ParseCsv(string content)
     {
+        content = content.TrimStart('﻿'); // a UTF-8 BOM would otherwise corrupt the first header name
         var config = new CsvConfiguration(CultureInfo.InvariantCulture)
         {
             HasHeaderRecord = true,
+            DetectDelimiter = true, // European exports often use ';' (their decimal separator is ',')
+            DetectDelimiterValues = [",", ";", "	", "|"],
             TrimOptions = TrimOptions.Trim,
             MissingFieldFound = null,
             BadDataFound = null,
@@ -36,7 +40,7 @@ public sealed partial class ImporterService(CapitrackDbContext db) : IImporterSe
         var headers = (csv.HeaderRecord ?? []).Select(h => h.Trim()).ToList();
         while (csv.Read())
         {
-            var dict = new Dictionary<string, string>();
+            var dict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             for (var i = 0; i < headers.Count; i++)
                 dict[headers[i]] = (csv.TryGetField<string>(i, out var val) ? val : "")?.Trim() ?? "";
             records.Add(dict);
@@ -197,6 +201,7 @@ public sealed partial class ImporterService(CapitrackDbContext db) : IImporterSe
     // ---- Parsers ----
     private static List<ImportedTransaction> ParseRevolutStock(List<Dictionary<string, string>> records)
     {
+        var sep = Separator(records, "Quantity", "Price per share", "Total Amount", "FX Rate");
         var list = new List<ImportedTransaction>();
         foreach (var r in records)
         {
@@ -214,15 +219,15 @@ public sealed partial class ImporterService(CapitrackDbContext db) : IImporterSe
             };
             if (txType == "") continue;
 
-            decimal quantity = Math.Abs(Num(Get(r, "Quantity", "0")));
-            decimal price = Num(Clean(Get(r, "Price per share", "0")));
-            decimal total = Math.Abs(Num(Clean(Get(r, "Total Amount", "0"))));
+            decimal quantity = Math.Abs(Num(Get(r, "Quantity", "0"), sep));
+            decimal price = Num(Get(r, "Price per share", "0"), sep);
+            decimal total = Math.Abs(Num(Get(r, "Total Amount", "0"), sep));
             var currency = Get(r, "Currency", "USD").Trim();
             var date = IsoDate(Get(r, "Date").Trim());
 
             decimal finalQty = quantity, finalPrice = price;
             if (txType == "dividend") { finalQty = total; finalPrice = 1; }
-            if (txType == "transfer_in" && quantity == 0 && total == 0) { finalQty = Num(Get(r, "Quantity", "0")); finalPrice = 0; }
+            if (txType == "transfer_in" && quantity == 0 && total == 0) { finalQty = Num(Get(r, "Quantity", "0"), sep); finalPrice = 0; }
             if (string.IsNullOrEmpty(date)) continue;
 
             list.Add(new ImportedTransaction(ticker.ToUpperInvariant(), txType, finalQty, finalPrice, 0, currency, date, $"Revolut: {type}"));
@@ -232,14 +237,15 @@ public sealed partial class ImporterService(CapitrackDbContext db) : IImporterSe
 
     private static List<ImportedTransaction> ParseRevolutCommodity(List<Dictionary<string, string>> records)
     {
+        var sep = Separator(records, "Amount", "Fee", "Balance");
         var list = new List<ImportedTransaction>();
         var symbolMap = new Dictionary<string, string> { ["XAU"] = "GC=F", ["XAG"] = "SI=F", ["XPT"] = "PL=F", ["XPD"] = "PA=F" };
         foreach (var r in records)
         {
             if (Get(r, "State").Trim() != "COMPLETED") continue;
             var description = Get(r, "Description").Trim();
-            decimal amount = Num(Get(r, "Amount", "0"));
-            decimal fee = Math.Abs(Num(Get(r, "Fee", "0")));
+            decimal amount = Num(Get(r, "Amount", "0"), sep);
+            decimal fee = Math.Abs(Num(Get(r, "Fee", "0"), sep));
             var currency = Get(r, "Currency", "XAU").Trim();
             var dateStr = Get(r, "Started Date", Get(r, "Completed Date")).Trim();
             var date = string.IsNullOrEmpty(dateStr) ? "" : dateStr.Split(' ')[0];
@@ -258,15 +264,16 @@ public sealed partial class ImporterService(CapitrackDbContext db) : IImporterSe
 
     private static List<ImportedTransaction> ParseTrezor(List<Dictionary<string, string>> records)
     {
+        var sep = Separator(records, "Amount", "Fee", "Fiat (USD)");
         var list = new List<ImportedTransaction>();
         var symbolMap = new Dictionary<string, string> { ["BTC"] = "BTC-USD", ["ETH"] = "ETH-USD", ["LTC"] = "LTC-USD" };
         foreach (var r in records)
         {
             var type = Get(r, "Type").Trim().ToUpperInvariant();
-            decimal amount = Math.Abs(Num(Get(r, "Amount", "0")));
+            decimal amount = Math.Abs(Num(Get(r, "Amount", "0"), sep));
             var amountUnit = Get(r, "Amount unit", "BTC").Trim();
-            decimal fiatUsd = Math.Abs(Num(Clean(Get(r, "Fiat (USD)", "0"))));
-            decimal fee = Math.Abs(Num(Clean(Get(r, "Fee", "0"))));
+            decimal fiatUsd = Math.Abs(Num(Get(r, "Fiat (USD)", "0"), sep));
+            decimal fee = Math.Abs(Num(Get(r, "Fee", "0"), sep));
             var dateStr = Get(r, "Date").Trim();
             var txId = Get(r, "Transaction ID").Trim();
 
@@ -292,14 +299,15 @@ public sealed partial class ImporterService(CapitrackDbContext db) : IImporterSe
 
     private static List<ImportedTransaction> ParseGeneric(List<Dictionary<string, string>> records)
     {
+        var sep = Separator(records, "quantity", "price", "fee");
         var list = new List<ImportedTransaction>();
         foreach (var r in records)
         {
             var symbol = Pick(r, "symbol", "Symbol", "SYMBOL").ToUpperInvariant();
             var type = Or(Pick(r, "type", "Type", "TYPE"), "buy").ToLowerInvariant();
-            decimal quantity = Num(Or(Pick(r, "quantity", "Quantity", "QUANTITY"), "0"));
-            decimal price = Num(Or(Pick(r, "price", "Price", "PRICE"), "0"));
-            decimal fee = Num(Or(Pick(r, "fee", "Fee", "FEE"), "0"));
+            decimal quantity = Num(Or(Pick(r, "quantity"), "0"), sep);
+            decimal price = Num(Or(Pick(r, "price"), "0"), sep);
+            decimal fee = Num(Or(Pick(r, "fee"), "0"), sep);
             var currency = Or(Pick(r, "currency", "Currency", "CURRENCY"), "EUR");
             var date = Pick(r, "date", "Date", "DATE");
             var notes = Pick(r, "notes", "Notes", "NOTES");
@@ -324,8 +332,11 @@ public sealed partial class ImporterService(CapitrackDbContext db) : IImporterSe
 
     private static string Or(string value, string fallback) => string.IsNullOrEmpty(value) ? fallback : value;
 
-    private static string Clean(string s) => MyRegex().Replace(s, "");
-    private static decimal Num(string s) => decimal.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var d) ? d : 0;
+    private static decimal Num(string s, DecimalSeparator sep) => DecimalParser.TryParse(s, sep, out var d) ? d : 0;
+
+    /// <summary>The file's decimal separator, inferred once from all values of its numeric columns.</summary>
+    private static DecimalSeparator Separator(List<Dictionary<string, string>> records, params string[] columns) =>
+        DecimalParser.Detect(records.SelectMany(r => columns.Select(c => r.TryGetValue(c, out var v) ? v : null)));
 
     private static string IsoDate(string s)
     {
@@ -334,6 +345,4 @@ public sealed partial class ImporterService(CapitrackDbContext db) : IImporterSe
             ? dto.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) : "";
     }
 
-    [GeneratedRegex("[^0-9.\\-]")]
-    private static partial Regex MyRegex();
 }
