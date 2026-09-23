@@ -12,7 +12,7 @@ namespace Server.Application.Goals.Commands;
 /// <param name="CategoryId">The optional owning category's identifier.</param>
 /// <param name="TagIds">The ids of tags to attach.</param>
 public record CreateGoalCommand(
-    string? Title, double? TargetAmount, string? TargetDate, string? Description,
+    string? Title, decimal? TargetAmount, string? TargetDate, string? Description,
     bool? Achieved, int? CategoryId, List<int>? TagIds) : IRequest<GoalDto>;
 
 /// <summary>Validates <see cref="CreateGoalCommand"/>.</summary>

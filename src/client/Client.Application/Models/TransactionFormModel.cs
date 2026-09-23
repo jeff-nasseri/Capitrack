@@ -7,9 +7,9 @@ public class TransactionFormModel
     public string Symbol { get; set; } = "";
     public string Type { get; set; } = "buy";
     public string Date { get; set; } = DateTime.UtcNow.ToString("yyyy-MM-dd");
-    public double? Quantity { get; set; }
-    public double? Price { get; set; }
-    public double Fee { get; set; }
+    public decimal? Quantity { get; set; }
+    public decimal? Price { get; set; }
+    public decimal Fee { get; set; }
     public string Currency { get; set; } = "EUR";
     public string Notes { get; set; } = "";
     public bool IsStaked { get; set; }

@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Server.Infrastructure.Persistence;
 using Server.Infrastructure.Persistence.Repositories;
 using Server.Infrastructure.Services;
+using Server.Infrastructure.Services.MarketData;
 
 namespace Server.Infrastructure;
 
@@ -31,6 +32,17 @@ public static class DependencyInjection
         services.AddSingleton<ISystemService, SystemService>();
         services.AddSingleton<IYahooFinanceClient, YahooFinanceClient>();
         services.AddSingleton<ITotpService, TotpService>();
+        // Market data: providers receive only symbols and dates; API keys come from the environment only.
+        var marketHttp = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
+        marketHttp.DefaultRequestHeaders.UserAgent.ParseAdd("Capitrack/1.0 (self-hosted)");
+        static string? Env(string name) => Environment.GetEnvironmentVariable(name);
+        services.AddSingleton<IPriceProvider>(_ => new CoinGeckoProvider(marketHttp, Env("COINGECKO_DEMO_API_KEY")));
+        services.AddSingleton<IPriceProvider>(_ => new KrakenProvider(marketHttp));
+        services.AddSingleton<IPriceProvider>(_ => new BitvavoProvider(marketHttp));
+        services.AddSingleton<IPriceProvider>(sp => new YahooProvider(sp.GetRequiredService<IYahooFinanceClient>()));
+        services.AddSingleton<IPriceProvider>(_ => new TwelveDataProvider(marketHttp, Env("TWELVE_DATA_API_KEY")));
+        services.AddSingleton<IPriceProvider>(_ => new EcbProvider(marketHttp));
+        services.AddScoped<IMarketDataService, MarketDataService>();
         services.AddScoped<IPriceService, PriceService>();
         services.AddScoped<IWealthService, WealthService>();
         services.AddScoped<IImporterService, ImporterService>();

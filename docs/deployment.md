@@ -78,6 +78,8 @@ Set on the **api** service in `docker-compose.yml`:
 | `CAPITRACK_INIT_USERNAME` | Admin username created on **first run** (empty DB only) | `admin` |
 | `CAPITRACK_INIT_PASSWORD` | Admin password on **first run**. If empty, a strong random password is generated and written to the logs | _(empty → random)_ |
 | `CAPITRACK_BASE_CURRENCY` | Base/main currency on **first run** | `EUR` |
+| `COINGECKO_DEMO_API_KEY` | Optional free CoinGecko Demo key (higher rate limit); get one at https://www.coingecko.com/en/developers/dashboard | _(empty → keyless)_ |
+| `TWELVE_DATA_API_KEY` | Free Twelve Data key; without it Twelve Data is skipped. Get one at https://twelvedata.com/account/api-keys | _(empty)_ |
 
 Additional variables the API understands (not set by default):
 

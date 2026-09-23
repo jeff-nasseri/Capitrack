@@ -7,7 +7,7 @@ public sealed class TransactionRepository(CapitrackDbContext db) : ITransactionR
     public async Task<IReadOnlyList<Transaction>> ListAsync(int? accountId, string? symbol, string? search, string? type, int? limit, int? offset, CancellationToken ct = default)
     {
         IQueryable<Transaction> q = ApplyFilters(db.Transactions.AsQueryable(), accountId, symbol, type)
-            .OrderByDescending(t => t.Date).ThenByDescending(t => t.Id);
+            .OrderByDescending(t => t.Date).ThenByDescending(t => t.OccurredAt).ThenByDescending(t => t.Id);
 
         if (!string.IsNullOrWhiteSpace(search))
         {

@@ -15,6 +15,9 @@ services:
       - CAPITRACK_INIT_USERNAME=${CAPITRACK_INIT_USERNAME:-admin}
       - CAPITRACK_INIT_PASSWORD=${CAPITRACK_INIT_PASSWORD:-}
       - CAPITRACK_BASE_CURRENCY=${CAPITRACK_BASE_CURRENCY:-EUR}
+      # Optional free market-data API keys (see .env.example); empty means the provider is skipped or keyless.
+      - COINGECKO_DEMO_API_KEY=${COINGECKO_DEMO_API_KEY:-}
+      - TWELVE_DATA_API_KEY=${TWELVE_DATA_API_KEY:-}
     volumes:
       - capitrack-dotnet-data:/app/data
       - ./transactions:/app/transactions:ro

@@ -25,6 +25,9 @@ public class CapitrackDbContext(DbContextOptions<CapitrackDbContext> options) : 
     public DbSet<TransactionTag> TransactionTags => Set<TransactionTag>();
     public DbSet<LoginAttempt> LoginAttempts => Set<LoginAttempt>();
     public DbSet<BlacklistedIp> BlacklistedIps => Set<BlacklistedIp>();
+    public DbSet<PriceHistoryRecord> PriceHistory => Set<PriceHistoryRecord>();
+    public DbSet<PriceCoverageRecord> PriceCoverage => Set<PriceCoverageRecord>();
+    public DbSet<AppSettingRecord> AppSettings => Set<AppSettingRecord>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -60,10 +63,16 @@ public class CapitrackDbContext(DbContextOptions<CapitrackDbContext> options) : 
             e.Property(x => x.Currency).HasConversion(v => v.Value, v => CurrencyCode.Create(v));
             e.Property(x => x.Date).HasConversion(v => v.Value, v => TradeDate.Create(v));
             e.Property(x => x.IsStaked).HasDefaultValue(false);
+            // SQLite returns DateTime with Kind=Unspecified; OccurredAt is always UTC
+            e.Property(x => x.OccurredAt).HasConversion(
+                v => v, v => v == null ? null : DateTime.SpecifyKind(v.Value, DateTimeKind.Utc));
             e.Property(x => x.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP").ValueGeneratedOnAdd();
             e.HasIndex(x => x.AccountId);
             e.HasIndex(x => x.Symbol);
             e.HasIndex(x => x.Date);
+            e.HasIndex(x => x.OccurredAt);
+            // an imported row exists at most once per account (NULL keys — manual entries — never collide)
+            e.HasIndex(x => new { x.AccountId, x.ImportKey }).IsUnique();
             e.HasOne<Account>().WithMany().HasForeignKey(x => x.AccountId).OnDelete(DeleteBehavior.Cascade);
         });
 
@@ -148,6 +157,24 @@ public class CapitrackDbContext(DbContextOptions<CapitrackDbContext> options) : 
         {
             e.HasIndex(x => x.IpAddress);
             e.HasIndex(x => x.ExpiresAt);
+        });
+
+        b.Entity<PriceHistoryRecord>(e =>
+        {
+            e.ToTable("PriceHistory");
+            e.HasKey(x => new { x.Symbol, x.Provider, x.Date });
+        });
+
+        b.Entity<PriceCoverageRecord>(e =>
+        {
+            e.ToTable("PriceCoverage");
+            e.HasKey(x => new { x.Symbol, x.Provider });
+        });
+
+        b.Entity<AppSettingRecord>(e =>
+        {
+            e.ToTable("AppSettings");
+            e.HasKey(x => x.Key);
         });
     }
 }

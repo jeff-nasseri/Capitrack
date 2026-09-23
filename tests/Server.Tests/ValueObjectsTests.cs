@@ -43,7 +43,7 @@ public class ValueObjectsTests
     [Fact]
     public void Quantity_rejects_negative()
     {
-        var act = () => Quantity.Create(-0.5);
+        var act = () => Quantity.Create(-0.5m);
         act.Should().Throw<NegativeQuantityException>();
     }
 
@@ -51,7 +51,7 @@ public class ValueObjectsTests
     public void Quantity_accepts_zero_and_positive()
     {
         Quantity.Create(0).Value.Should().Be(0);
-        Quantity.Create(12.5).Value.Should().Be(12.5);
+        Quantity.Create(12.5m).Value.Should().Be(12.5m);
     }
 
     [Theory]

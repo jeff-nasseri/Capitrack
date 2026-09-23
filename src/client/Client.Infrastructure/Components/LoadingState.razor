@@ -1,0 +1,9 @@
+<div class="loading-state @(Compact ? "compact" : "")" role="status" aria-live="polite">
+    <span class="loading-dot" aria-hidden="true"></span>
+    <span>@Text</span>
+</div>
+
+@code {
+    [Parameter] public string Text { get; set; } = "Loading…";
+    [Parameter] public bool Compact { get; set; }
+}

@@ -7,10 +7,10 @@ public class DailyWealthRecord
     public string Date { get; set; } = "";
 
     /// <summary>The total wealth on that date.</summary>
-    public double TotalWealth { get; set; }
+    public decimal TotalWealth { get; set; }
 
     /// <summary>The total cost basis on that date.</summary>
-    public double TotalCost { get; set; }
+    public decimal TotalCost { get; set; }
 
     /// <summary>The base currency the totals are expressed in.</summary>
     public string BaseCurrency { get; set; } = "EUR";

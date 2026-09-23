@@ -8,96 +8,180 @@
 @if (Modal.CheckImportVisible)
 {
     <div class="modal-overlay" @onclick="Close">
-        <div class="modal" style="max-width:820px;width:94vw;" @onclick:stopPropagation="true">
+        <div class="modal ci-modal" role="dialog" aria-labelledby="ci-title" @onclick:stopPropagation="true">
             <div class="modal-header">
-                <h3>Check &amp; Import</h3>
-                <button class="btn-icon" @onclick="Close"><Icon Name="x" /></button>
+                <h3 id="ci-title">Check &amp; Import</h3>
+                <button class="btn-icon" title="Close" @onclick="Close"><Icon Name="x" /></button>
             </div>
-            <div class="modal-body" style="max-height:80vh;overflow:auto;">
-                @if (_loading)
+            <div class="modal-body ci-body">
+                @if (_phase == Phase.Loading)
                 {
-                    <div class="loading-spinner">Parsing file(s)…</div>
+                    <LoadingState Text="@($"Reading {_fileCount} file{(_fileCount == 1 ? "" : "s")} and checking them against this account…")" />
                 }
-                else if (_result is not null)
+                else if (_phase == Phase.Error)
                 {
-                    <div class="success-message"><strong>Import complete.</strong> @($"Imported {_result.Imported} · Skipped {_result.Skipped} · Total {_result.Total}")</div>
+                    <div class="error-message ci-error" role="alert">@_error</div>
+                    <div class="flex gap-2 mt-4" style="justify-content:flex-end;">
+                        <button class="btn btn-ghost btn-sm" @onclick="Close">Close</button>
+                        <button class="btn btn-pri btn-sm" @onclick="LoadPreview"><Icon Name="refresh" /> Retry</button>
+                    </div>
+                }
+                else if (_phase == Phase.Done && _result is not null)
+                {
+                    <div class="ci-done">
+                        <div class="ci-done-title"><Icon Name="check" /> Import complete</div>
+                        <div class="ci-recon">
+                            <span class="ci-stat new">@_result.Imported transaction@(_result.Imported == 1 ? "" : "s") added</span>
+                            <span class="ci-stat dup">@_result.Skipped already present</span>
+                            @if (_result.Updated > 0) { <span class="ci-stat upd">@_result.Updated refreshed</span> }
+                            @if (_result.Rejected > 0) { <span class="ci-stat rej">@_result.Rejected row@(_result.Rejected == 1 ? "" : "s") not importable</span> }
+                        </div>
+                        @if (_result.Errors.Count > 0)
+                        {
+                            <div class="error-message mt-2">@string.Join(" ", _result.Errors)</div>
+                        }
+                    </div>
                     <button class="btn btn-pri btn-block mt-4" @onclick="Close">Done</button>
                 }
-                else if (_files.Count == 0)
+                else if (_preview is not null)
                 {
-                    <div class="empty-state"><Icon Name="info" /><p>No transactions were found in the selected file(s).</p></div>
-                }
-                else
-                {
-                    @* one tab per file *@
-                    @if (_files.Count > 1)
+                    @if (_preview.Files.Count > 1)
                     {
-                        <div class="flex gap-1" style="border-bottom:1px solid var(--border);margin-bottom:12px;flex-wrap:wrap;">
-                            @for (var i = 0; i < _files.Count; i++)
+                        <div class="ci-tabs" role="tablist">
+                            @for (var i = 0; i < _preview.Files.Count; i++)
                             {
                                 var idx = i;
-                                var f = _files[idx];
-                                <button class="btn btn-sm @(_activeTab == idx ? "btn-pri" : "btn-ghost")" @onclick="() => _activeTab = idx">
-                                    @ShortName(f.FileName) <span style="opacity:0.75;">(@f.Rows.Count(r => r.Selected)/@f.Rows.Count)</span>
+                                var f = _preview.Files[idx];
+                                <button role="tab" aria-selected="@(_active == idx)" class="ci-tab @(_active == idx ? "active" : "")" title="@f.FileName" @onclick="() => _active = idx">
+                                    <span class="ci-tab-name">@ShortName(f.FileName)</span>
+                                    @if (f.Format == "unknown") { <span class="chip down">unknown</span> }
+                                    else { <span class="chip @(Selected(idx).Count > 0 ? "up" : "")">@Selected(idx).Count new</span> }
                                 </button>
                             }
                         </div>
                     }
 
-                    var active = _files[Math.Min(_activeTab, _files.Count - 1)];
-                    <div class="flex row-between" style="margin-bottom:10px;align-items:center;flex-wrap:wrap;gap:8px;">
-                        <span class="chip pri">@FormatName(active.Format)</span>
-                        <label class="flex gap-2" style="align-items:center;font-size:0.85rem;cursor:pointer;">
-                            <input type="checkbox" checked="@active.Rows.All(r => r.Selected)" @onchange="e => ToggleAll(active, (bool)(e.Value ?? false))" />
-                            <span class="sub">Select all · @active.Rows.Count(r => r.Selected)/@active.Rows.Count</span>
-                        </label>
-                    </div>
-
-                    <div style="overflow-x:auto;">
-                        <table class="tbl" style="width:100%;font-size:0.84rem;">
-                            <thead>
-                                <tr>
-                                    <th style="width:30px;"></th>
-                                    <th>Date</th><th>Type</th><th>Symbol</th>
-                                    <th class="r">Qty</th><th class="r">Price</th><th>Flags</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var row in active.Rows)
+                    var file = _preview.Files[Math.Min(_active, _preview.Files.Count - 1)];
+                    var summary = SummaryFor(_active);
+                    <div class="ci-summary">
+                        <div class="flex row-between" style="align-items:center;gap:8px;flex-wrap:wrap;">
+                            <span class="chip pri">@FormatName(file.Format)</span>
+                            @if (_refreshing) { <span class="sub ci-refreshing"><Icon Name="refresh" Class="spinning" Width="12" Height="12" /> updating totals…</span> }
+                        </div>
+                        <div class="ci-recon mt-2">
+                            <span class="ci-big">@summary.RowsRead</span><span class="sub">rows read =</span>
+                            <span class="ci-stat new">@summary.New new</span><span class="sub">+</span>
+                            <span class="ci-stat dup">@summary.Duplicates duplicate@(summary.Duplicates == 1 ? "" : "s")@(summary.Updates > 0 ? $" ({summary.Updates} refreshed)" : "")</span><span class="sub">+</span>
+                            <span class="ci-stat rej">@summary.Rejected rejected</span>
+                            @if (summary.Unselected > 0) { <span class="sub">+</span><span class="ci-stat off">@summary.Unselected not selected</span> }
+                        </div>
+                        @if (summary.CountsByType.Count > 0)
+                        {
+                            <div class="flex gap-2 mt-2" style="flex-wrap:wrap;align-items:center;">
+                                @foreach (var (type, count) in summary.CountsByType)
                                 {
-                                    <tr style="@(row.Tx.IsDuplicate ? "opacity:0.55;" : "")">
-                                        <td><input type="checkbox" checked="@row.Selected" @onchange="e => row.Selected = (bool)(e.Value ?? false)" /></td>
-                                        <td style="white-space:nowrap;">@row.Tx.Date</td>
-                                        <td><TxnBadge Type="@row.Tx.Type" /></td>
-                                        <td class="num">@row.Tx.Symbol</td>
-                                        <td class="r num">@Format.Shares(row.Tx.Quantity)</td>
-                                        <td class="r num">@Format.Money(row.Tx.Price, row.Tx.Currency)</td>
-                                        <td>
-                                            <div class="flex gap-2" style="align-items:center;">
-                                                @if (row.Tx.CanStake)
-                                                {
-                                                    <label class="flex gap-1" style="align-items:center;cursor:pointer;" title="Count as staked (still part of wealth even though sent out)">
-                                                        <input type="checkbox" checked="@row.Staked" @onchange="e => row.Staked = (bool)(e.Value ?? false)" />
-                                                        <span class="sub">stake</span>
-                                                    </label>
-                                                }
-                                                @if (row.Tx.IsDuplicate)
-                                                {
-                                                    <span class="chip" style="font-size:0.68rem;color:var(--text-3);">duplicate</span>
-                                                }
-                                            </div>
-                                        </td>
-                                    </tr>
+                                    <span class="ci-type"><TxnBadge Type="@type" /> <span class="tnum">× @count</span></span>
                                 }
-                            </tbody>
-                        </table>
+                            </div>
+                        }
+                        @if (summary.Assets.Count > 0)
+                        {
+                            <div class="ci-assets-wrap mt-2">
+                                <table class="tbl ci-assets">
+                                    <thead><tr><th>Asset</th><th class="r">Received</th><th class="r">Sent</th><th class="r">Network fees</th><th class="r">Balance now</th><th class="r">After import</th></tr></thead>
+                                    <tbody>
+                                        @foreach (var a in summary.Assets)
+                                        {
+                                            <tr>
+                                                <td class="num">@a.Symbol</td>
+                                                <td class="r num">@Format.Shares(a.Received)</td>
+                                                <td class="r num">@Format.Shares(a.Sent)</td>
+                                                <td class="r num">@Format.Shares(a.Fees)</td>
+                                                <td class="r num sub">@Format.Shares(a.CurrentBalance)</td>
+                                                <td class="r num" style="font-weight:650;">@Format.Shares(a.ResultingBalance)</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
                     </div>
 
-                    <div class="flex gap-2 mt-4" style="justify-content:flex-end;align-items:center;">
-                        <span class="sub" style="margin-right:auto;">@SelectedCount selected across @_files.Count file@(_files.Count == 1 ? "" : "s")</span>
-                        <button class="btn btn-ghost btn-sm" @onclick="Close">Cancel</button>
-                        <button class="btn btn-pri btn-sm" @onclick="DoImport" disabled="@(_busy || SelectedCount == 0)">
-                            <Icon Name="upload" /> @(_busy ? "Importing…" : $"Import {SelectedCount} selected")
+                    @if (file.Rows.Count == 0)
+                    {
+                        <div class="empty-state"><Icon Name="info" /><p>This file has no data rows.</p></div>
+                    }
+                    else
+                    {
+                        <div class="flex row-between mt-4" style="align-items:center;flex-wrap:wrap;gap:8px;">
+                            <div class="ci-legend">
+                                <span class="ci-pill new">New</span><span class="ci-pill duplicate">Duplicate</span><span class="ci-pill update">Update</span><span class="ci-pill rejected">Rejected</span>
+                            </div>
+                            @if (Selectable(file).Any())
+                            {
+                                <label class="ci-check">
+                                    <input type="checkbox" checked="@(Selectable(file).All(r => Selected(_active).Contains(r.Row)))" @onchange="e => ToggleAll(file, (bool)(e.Value ?? false))" />
+                                    <span class="sub">Select all new · @Selected(_active).Count/@Selectable(file).Count()</span>
+                                </label>
+                            }
+                        </div>
+
+                        <div class="ci-rows-wrap">
+                            <table class="tbl ci-rows">
+                                <thead>
+                                    <tr><th style="width:34px;"></th><th>Status</th><th>Date</th><th>Type</th><th>Asset</th><th class="r">Quantity</th><th class="r">Price</th><th class="r">Network fee</th><th>Stake</th></tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var row in file.Rows)
+                                    {
+                                        var r = row;
+                                        var status = r.Status;
+                                        var main = r.Legs.FirstOrDefault(l => l.Type != "fee") ?? r.Legs.FirstOrDefault();
+                                        var feeLeg = r.Legs.FirstOrDefault(l => l.Type == "fee" && !ReferenceEquals(l, main));
+                                        var selectable = status is "new" or "update";
+                                        <tr class="ci-row @status" title="@r.Reason">
+                                            <td>
+                                                @if (selectable)
+                                                {
+                                                    <input type="checkbox" aria-label="Import row @r.Row" checked="@Selected(_active).Contains(r.Row)" @onchange="e => Toggle(r.Row, (bool)(e.Value ?? false))" />
+                                                }
+                                            </td>
+                                            <td><span class="ci-pill @status">@StatusLabel(status)</span></td>
+                                            @if (status == "rejected")
+                                            {
+                                                <td colspan="7" class="ci-reason">Row @r.Row — @r.Reason</td>
+                                            }
+                                            else
+                                            {
+                                                <td class="num" style="white-space:nowrap;">@When(r)</td>
+                                                <td>@if (main is not null) { <TxnBadge Type="@main.Type" /> }</td>
+                                                <td class="num">@main?.Symbol</td>
+                                                <td class="r num">@(main is null ? "" : Format.Shares(main.Quantity))</td>
+                                                <td class="r num">@(main is null || main.Price == 0 ? "—" : Format.Money(main.Price, main.Currency, main.Price < 1 ? 6 : 2))</td>
+                                                <td class="r num sub">@(feeLeg is null ? "" : $"{Format.Shares(feeLeg.Quantity)} {Unit(feeLeg.Symbol)}")</td>
+                                                <td>
+                                                    @if (r.CanStake && selectable)
+                                                    {
+                                                        <label class="ci-check" title="Count as staked: still part of your wealth even though it left the wallet">
+                                                            <input type="checkbox" checked="@Staked(_active).Contains(r.Row)" @onchange="e => ToggleStake(r.Row, (bool)(e.Value ?? false))" />
+                                                            <span class="sub">stake</span>
+                                                        </label>
+                                                    }
+                                                </td>
+                                            }
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+
+                    <div class="ci-footer">
+                        <span class="sub">@TotalSelected new row@(TotalSelected == 1 ? "" : "s") selected across @_preview.Files.Count file@(_preview.Files.Count == 1 ? "" : "s")</span>
+                        <button class="btn btn-ghost btn-sm" @onclick="Close" disabled="@_busy">Cancel</button>
+                        <button class="btn btn-pri btn-sm" @onclick="DoImport" disabled="@(_busy || TotalSelected == 0)">
+                            @if (_busy) { <Icon Name="refresh" Class="spinning" /> <span>Importing…</span> }
+                            else { <Icon Name="download" /> <span>Import @TotalSelected row@(TotalSelected == 1 ? "" : "s")</span> }
                         </button>
                     </div>
                 }
@@ -107,28 +191,28 @@
 }
 
 @code {
-    private bool _loading;
+    private enum Phase { Idle, Loading, Error, Ready, Done }
+
+    private Phase _phase;
     private bool _busy;
-    private int _activeTab;
+    private bool _refreshing;
+    private int _active;
+    private int _fileCount;
+    private string? _error;
+    private ImportPreviewDto? _preview;             // the first preview: each row's status as it is now
+    private List<FileSummaryDto> _summaries = [];    // totals for the current selection
     private ImportResultDto? _result;
-    private List<FileVM> _files = [];
+    private List<(string Name, byte[] Bytes)> _files = [];
+    private List<HashSet<int>> _selected = [];
+    private List<HashSet<int>> _staked = [];
     private IReadOnlyList<IBrowserFile>? _loadedFor;
+    private CancellationTokenSource? _refreshCts;
 
-    private int SelectedCount => _files.Sum(f => f.Rows.Count(r => r.Selected));
-
-    private sealed class FileVM
-    {
-        public string FileName = "";
-        public string Format = "";
-        public List<RowVM> Rows = [];
-    }
-
-    private sealed class RowVM
-    {
-        public required PreviewTransactionDto Tx;
-        public bool Selected;
-        public bool Staked;
-    }
+    private HashSet<int> Selected(int file) => _selected[file];
+    private HashSet<int> Staked(int file) => _staked[file];
+    private int TotalSelected => _selected.Sum(s => s.Count);
+    private FileSummaryDto SummaryFor(int file) => file < _summaries.Count ? _summaries[file] : _preview!.Files[file].Summary;
+    private static IEnumerable<PreviewRowDto> Selectable(FilePreviewDto f) => f.Rows.Where(r => r.Status is "new" or "update");
 
     protected override void OnInitialized() => Modal.OnChange += OnModalChange;
 
@@ -137,6 +221,7 @@
         if (Modal.CheckImportVisible && !ReferenceEquals(_loadedFor, Modal.CheckImportFiles))
         {
             _loadedFor = Modal.CheckImportFiles;
+            await ReadFiles();
             await LoadPreview();
         }
         else if (!Modal.CheckImportVisible && _loadedFor is not null)
@@ -146,73 +231,135 @@
         StateHasChanged();
     });
 
+    /// <summary>Reads the chosen files once: they are sent with every totals refresh and again for the import.</summary>
+    private async Task ReadFiles()
+    {
+        _phase = Phase.Loading;
+        _files = [];
+        foreach (var f in Modal.CheckImportFiles ?? [])
+        {
+            using var ms = new MemoryStream();
+            await f.OpenReadStream(15 * 1024 * 1024).CopyToAsync(ms);
+            _files.Add((f.Name, ms.ToArray()));
+        }
+        _fileCount = _files.Count;
+    }
+
     private async Task LoadPreview()
     {
-        _loading = true; _result = null; _activeTab = 0; _files = [];
+        _phase = Phase.Loading; _error = null; _result = null; _active = 0;
         StateHasChanged();
         try
         {
-            var files = Modal.CheckImportFiles;
-            if (files is null || files.Count == 0 || State.CurrentAccountId is null) return;
-
-            using var content = new MultipartFormDataContent();
-            foreach (var f in files)
-                content.Add(new StreamContent(f.OpenReadStream(15 * 1024 * 1024)), "files", f.Name);
-            content.Add(new StringContent(State.CurrentAccountId.Value.ToString()), "account_id");
-
-            var preview = await Api.PostFormAsync<List<PreviewFileDto>>("/api/transactions/import/preview", content) ?? [];
-            _files = preview.Select(p => new FileVM
-            {
-                FileName = p.FileName,
-                Format = p.Format,
-                Rows = p.Transactions.Select(t => new RowVM { Tx = t, Selected = !t.IsDuplicate, Staked = false }).ToList()
-            }).ToList();
+            if (_files.Count == 0 || State.CurrentAccountId is null) { _error = "No file or account selected."; _phase = Phase.Error; return; }
+            var (ok, preview) = await Api.PostFormWithStatusAsync<ImportPreviewDto>("/api/transactions/import/preview", Content(withSelection: false));
+            if (!ok || preview is null) { _error = "The file(s) could not be checked. Make sure they are CSV exports from a supported source."; _phase = Phase.Error; return; }
+            _preview = preview;
+            _summaries = preview.Files.Select(f => f.Summary).ToList();
+            _selected = preview.Files.Select(f => Selectable(f).Select(r => r.Row).ToHashSet()).ToList();
+            _staked = preview.Files.Select(_ => new HashSet<int>()).ToList();
+            _phase = Phase.Ready;
         }
-        catch { Toast.Show("Could not parse the selected file(s)", "error"); }
-        finally { _loading = false; StateHasChanged(); }
+        catch (Exception e)
+        {
+            _error = $"The file(s) could not be checked: {e.Message}";
+            _phase = Phase.Error;
+        }
+        finally { StateHasChanged(); }
     }
 
-    private static void ToggleAll(FileVM f, bool on)
+    private MultipartFormDataContent Content(bool withSelection)
     {
-        foreach (var r in f.Rows) r.Selected = on;
+        var content = new MultipartFormDataContent();
+        foreach (var (name, bytes) in _files)
+            content.Add(new ByteArrayContent(bytes), "files", name);
+        content.Add(new StringContent(State.CurrentAccountId!.Value.ToString()), "account_id");
+        if (withSelection)
+        {
+            var selection = _selected.Select((s, i) => new FileSelectionDto { Rows = s.OrderBy(x => x).ToList(), Staked = _staked[i].Where(s.Contains).OrderBy(x => x).ToList() });
+            content.Add(new StringContent(System.Text.Json.JsonSerializer.Serialize(selection, SelectionJson)), "selection");
+        }
+        return content;
+    }
+
+    private static readonly System.Text.Json.JsonSerializerOptions SelectionJson =
+        new() { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.SnakeCaseLower };
+
+    private void Toggle(int row, bool on) { if (on) Selected(_active).Add(row); else Selected(_active).Remove(row); QueueRefresh(); }
+    private void ToggleStake(int row, bool on) { if (on) Staked(_active).Add(row); else Staked(_active).Remove(row); QueueRefresh(); }
+
+    private void ToggleAll(FilePreviewDto f, bool on)
+    {
+        foreach (var r in Selectable(f)) { if (on) Selected(_active).Add(r.Row); else Selected(_active).Remove(r.Row); }
+        QueueRefresh();
+    }
+
+    /// <summary>Recomputes the totals for the current selection on the server (the plan the import runs), debounced.</summary>
+    private void QueueRefresh()
+    {
+        _refreshCts?.Cancel();
+        var cts = _refreshCts = new CancellationTokenSource();
+        _refreshing = true;
+        _ = InvokeAsync(async () =>
+        {
+            try
+            {
+                await Task.Delay(300, cts.Token);
+                var (ok, preview) = await Api.PostFormWithStatusAsync<ImportPreviewDto>("/api/transactions/import/preview", Content(withSelection: true));
+                if (!cts.IsCancellationRequested && ok && preview is not null) _summaries = preview.Files.Select(f => f.Summary).ToList();
+            }
+            catch (TaskCanceledException) { return; }
+            catch { /* keep the previous totals; the import itself re-plans on the server */ }
+            if (!cts.IsCancellationRequested) { _refreshing = false; StateHasChanged(); }
+        });
     }
 
     private async Task DoImport()
     {
-        if (State.CurrentAccountId is null || SelectedCount == 0) return;
+        if (State.CurrentAccountId is null || TotalSelected == 0) return;
         _busy = true;
+        StateHasChanged();
         try
         {
-            var selected = _files.SelectMany(f => f.Rows).Where(r => r.Selected).Select(r => new SelectedTransactionDto
-            {
-                Symbol = r.Tx.Symbol, Type = r.Tx.Type, Quantity = r.Tx.Quantity, Price = r.Tx.Price,
-                Fee = r.Tx.Fee, Currency = r.Tx.Currency, Date = r.Tx.Date, Notes = r.Tx.Notes, IsStaked = r.Staked
-            }).ToList();
-
-            var body = new { account_id = State.CurrentAccountId.Value, transactions = selected };
-            _result = await Api.PostAsync<ImportResultDto>("/api/transactions/import/selected", body);
-            if (_result is not null && _result.Error is null)
+            var (ok, result) = await Api.PostFormWithStatusAsync<ImportResultDto>("/api/transactions/import/selected", Content(withSelection: true));
+            if (!ok || result is null) { Toast.Show("Import failed — nothing was written", "error"); return; }
+            _result = result;
+            _phase = Phase.Done;
+            if (result.Errors.Count == 0)
             {
                 Modal.RaiseImported();
-                Toast.Show($"Imported {_result.Imported} transaction(s)", "success");
+                Toast.Show($"Imported {result.Imported} transaction(s)", "success");
             }
         }
-        catch { Toast.Show("Import failed", "error"); }
+        catch { Toast.Show("Import failed — nothing was written", "error"); }
         finally { _busy = false; StateHasChanged(); }
     }
 
     private void Reset()
     {
-        _files = []; _result = null; _activeTab = 0; _loadedFor = null; _loading = false; _busy = false;
+        _refreshCts?.Cancel();
+        _preview = null; _summaries = []; _result = null; _active = 0; _loadedFor = null; _files = [];
+        _selected = []; _staked = []; _phase = Phase.Idle; _busy = false; _refreshing = false; _error = null;
     }
 
     private void Close()
     {
+        if (_busy) return;
         Reset();
         Modal.CloseCheckImport();
     }
 
-    private static string ShortName(string name) => name.Length > 24 ? name[..22] + "…" : name;
+    private static string When(PreviewRowDto r) =>
+        r.OccurredAt is { } at ? at.ToLocalTime().ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture) : r.Date ?? "";
+
+    private static string Unit(string symbol) => symbol.EndsWith("-USD", StringComparison.OrdinalIgnoreCase) ? symbol[..^4] : symbol;
+
+    private static string StatusLabel(string status) => status switch
+    {
+        "new" => "New", "duplicate" => "Duplicate", "update" => "Update", "rejected" => "Rejected", _ => status
+    };
+
+    private static string ShortName(string name) => name.Length > 26 ? name[..24] + "…" : name;
 
     private static string FormatName(string fmt) => fmt switch
     {
@@ -223,5 +370,9 @@
         _ => "Unknown format"
     };
 
-    public void Dispose() => Modal.OnChange -= OnModalChange;
+    public void Dispose()
+    {
+        _refreshCts?.Cancel();
+        Modal.OnChange -= OnModalChange;
+    }
 }

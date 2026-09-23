@@ -5,4 +5,4 @@ namespace Server.Application.Prices;
 /// <param name="Value">The portfolio market value on that date.</param>
 /// <param name="Cost">The cost basis on that date.</param>
 /// <param name="Gain">The gain (value minus cost) on that date.</param>
-public record PortfolioHistoryPointDto(string Date, double Value, double Cost, double Gain);
+public record PortfolioHistoryPointDto(string Date, decimal Value, decimal Cost, decimal Gain);

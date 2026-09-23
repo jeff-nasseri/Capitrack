@@ -30,7 +30,11 @@
 
         @* right panel *@
         <div>
-            @if (_panel == "accounts")
+            @if (!_loaded)
+            {
+                <LoadingState Text="Loading settings…" />
+            }
+            else if (_panel == "accounts")
             {
                 <SettingsPanel IconName="wallet" Title="Accounts">
                     <Action><button class="btn btn-pri btn-sm" @onclick="() => ShowAccount(null)"><Icon Name="plus" /> Add</button></Action>
@@ -130,7 +134,7 @@
                     <p class="sub" style="margin-bottom:14px;">Export a full JSON snapshot of your data (accounts, transactions, tags, goals, currency rates and daily wealth), or restore from a previous export.</p>
 
                     <SettingsRow Title="Export data" Sub="Download everything as a single JSON backup file.">
-                        <button class="btn btn-pri btn-sm" @onclick="ExportData"><Icon Name="download" /> Export JSON</button>
+                        <button class="btn btn-pri btn-sm" @onclick="ExportData"><Icon Name="upload" /> Export JSON</button>
                     </SettingsRow>
 
                     <div class="mt-4" style="border:1px solid var(--down);background:var(--down-soft);border-radius:var(--r-sm);padding:15px 16px;">
@@ -144,7 +148,7 @@
                             <p class="sub" style="margin-bottom:10px;"><Icon Name="info" Width="13" Height="13" /> Selected: <strong style="color:var(--text-2);">@_backupFile.Name</strong></p>
                         }
                         <button class="btn btn-danger btn-sm" @onclick="ImportData" disabled="@(_backupFile is null || _importBusy)">
-                            <Icon Name="upload" /> @(_importBusy ? "Replacing…" : "Import & replace all data")
+                            <Icon Name="download" /> @(_importBusy ? "Replacing…" : "Import & replace all data")
                         </button>
                     </div>
                 </SettingsPanel>
@@ -152,42 +156,68 @@
             else if (_panel == "providers")
             {
                 <SettingsPanel IconName="trend" Title="Market Data">
-                    <p class="sub" style="margin-bottom:16px;line-height:1.6;">Capitrack fetches live and historical prices for your holdings from the provider below. Support for additional providers — each with its own API key and enable/disable switch — is on the way.</p>
+                    <p class="sub" style="margin-bottom:8px;line-height:1.6;">For each kind of asset, Capitrack asks the first provider in its list. When that provider fails, cannot price a symbol or lacks part of a date range, the next one is tried. Past daily closes are stored locally, so each is fetched only once.</p>
+                    <p class="sub" style="margin-bottom:16px;line-height:1.6;">Providers only ever receive a symbol and dates, never your holdings or amounts. API keys are read from environment variables on the server, never stored in the database.</p>
                     @if (_providers.Count == 0)
                     {
                         <div class="empty-state"><Icon Name="trend" /><p>No market-data providers configured.</p></div>
                     }
-                    @foreach (var p in _providers)
+                    @foreach (var (cls, label) in ProviderClasses)
                     {
-                        <div class="card card-pad mt-3">
-                            <div class="flex gap-3" style="align-items:flex-start;">
-                                <div style="flex-shrink:0;width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:var(--pri-soft);color:var(--pri-2);"><Icon Name="trend" Width="20" Height="20" /></div>
-                                <div style="flex:1;min-width:0;">
-                                    <div class="flex gap-2" style="align-items:center;flex-wrap:wrap;">
-                                        <span style="font-weight:700;font-size:0.98rem;">@p.Name</span>
-                                        @if (p.IsDefault)
-                                        {
-                                            <span class="chip" style="color:var(--pri-2);background:var(--pri-soft);">Default</span>
-                                        }
-                                        @if (p.Enabled)
-                                        {
-                                            <span class="chip up"><Icon Name="check" Width="12" Height="12" /> Active</span>
-                                        }
-                                    </div>
-                                    <p class="sub" style="margin-top:6px;line-height:1.55;">@p.Description</p>
-                                    <div class="flex gap-4 mt-3" style="flex-wrap:wrap;align-items:center;">
-                                        <span class="sub"><Icon Name="lock" Width="13" Height="13" /> @(p.RequiresApiKey ? (p.ApiKeySet ? "API key configured" : "API key required") : "No API key required")</span>
-                                        @if (!string.IsNullOrEmpty(p.Website))
-                                        {
-                                            <a class="sub" style="color:var(--pri-2);" href="@p.Website" target="_blank" rel="noopener"><Icon Name="external" Width="13" Height="13" /> Provider site</a>
-                                        }
+                        var list = ProvidersFor(cls);
+                        if (list.Count == 0) continue;
+                        var enabledCount = list.Count(p => p.Positions.GetValueOrDefault(cls) > 0);
+                        <div class="mt-4" data-provider-class="@cls">
+                            <div style="font-weight:600;font-size:0.9rem;margin-bottom:8px;">@label</div>
+                            @foreach (var p in list)
+                            {
+                                var pos = p.Positions.GetValueOrDefault(cls);
+                                var on = pos > 0;
+                                <div class="card card-pad mt-2" style="@(on ? "" : "opacity:0.75;")" data-provider="@p.Id">
+                                    <div class="flex gap-3" style="align-items:flex-start;">
+                                        <div style="flex-shrink:0;width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:700;background:@(on ? "var(--pri-soft)" : "var(--surface-3)");color:@(on ? "var(--pri-2)" : "var(--text-3)");" title="@(on ? $"Asked {Ordinal(pos)}" : "Not used")">@(on ? pos.ToString() : "–")</div>
+                                        <div style="flex:1;min-width:0;">
+                                            <div class="flex gap-2" style="align-items:center;flex-wrap:wrap;">
+                                                <span style="font-weight:700;font-size:0.95rem;">@p.Name</span>
+                                                @if (pos == 1)
+                                                {
+                                                    <span class="chip pri">Primary</span>
+                                                }
+                                                @if (!p.Configured)
+                                                {
+                                                    <span class="chip warn">API key not set: skipped</span>
+                                                }
+                                            </div>
+                                            @if (!string.IsNullOrEmpty(p.Limits))
+                                            {
+                                                <p class="sub" style="margin-top:4px;line-height:1.5;">@p.Limits</p>
+                                            }
+                                            <div class="flex gap-4 mt-2" style="flex-wrap:wrap;align-items:center;">
+                                                <span class="sub"><Icon Name="lock" Width="13" Height="13" /> @KeyStatus(p)</span>
+                                                @if (!string.IsNullOrEmpty(p.ApiKeyUrl) && !p.ApiKeySet)
+                                                {
+                                                    <a class="sub" style="color:var(--pri-2);" href="@p.ApiKeyUrl" target="_blank" rel="noopener"><Icon Name="external" Width="13" Height="13" /> Get a free key</a>
+                                                }
+                                                @if (!string.IsNullOrEmpty(p.Website))
+                                                {
+                                                    <a class="sub" style="color:var(--pri-2);" href="@p.Website" target="_blank" rel="noopener"><Icon Name="external" Width="13" Height="13" /> Provider site</a>
+                                                }
+                                            </div>
+                                        </div>
+                                        <div class="flex gap-2" style="flex-shrink:0;align-items:center;">
+                                            <button type="button" class="btn-icon" style="width:30px;height:30px;" aria-label="@($"Ask {p.Name} earlier for {label}")" title="Move up"
+                                                    disabled="@(!on || pos == 1 || _providerBusy)" @onclick="() => MoveProvider(cls, p.Id, -1)">↑</button>
+                                            <button type="button" class="btn-icon" style="width:30px;height:30px;" aria-label="@($"Ask {p.Name} later for {label}")" title="Move down"
+                                                    disabled="@(!on || pos == enabledCount || _providerBusy)" @onclick="() => MoveProvider(cls, p.Id, 1)">↓</button>
+                                            <button type="button" role="switch" aria-checked="@(on ? "true" : "false")" aria-label="@($"Use {p.Name} for {label}")"
+                                                    title="@(on ? "Stop using for this kind of asset" : "Use for this kind of asset")" disabled="@_providerBusy" @onclick="() => ToggleProvider(cls, p.Id)"
+                                                    style="@($"flex-shrink:0;width:42px;height:24px;border-radius:99px;border:none;cursor:pointer;padding:0;position:relative;background:{(on ? "var(--pri)" : "var(--surface-3)")};")">
+                                                <i style="@($"position:absolute;top:3px;left:{(on ? "21px" : "3px")};width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.3);")"></i>
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
-                                <button type="button" role="switch" aria-checked="@(p.Enabled ? "true" : "false")" disabled title="More providers and toggles are coming soon"
-                                        style="@($"flex-shrink:0;width:42px;height:24px;border-radius:99px;border:none;cursor:not-allowed;padding:0;position:relative;background:{(p.Enabled ? "var(--pri)" : "var(--surface-3)")};opacity:0.9;")">
-                                    <i style="@($"position:absolute;top:3px;left:{(p.Enabled ? "21px" : "3px")};width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,0.3);")"></i>
-                                </button>
-                            </div>
+                            }
                         </div>
                     }
                 </SettingsPanel>
@@ -498,7 +528,7 @@
     private List<GoalDto> _goals = [];
     private List<TagDto> _tags = [];
     private List<CurrencyRateDto> _rates = [];
-    private double _wealth;
+    private decimal _wealth;
     private string _base = "EUR";
     private string _version = "1.0.0";
     private string _dbPath = "", _dbStatus = "";
@@ -507,6 +537,66 @@
     private string? _pwMsg;
     private bool _pwOk;
     private List<MarketDataProviderDto> _providers = [];
+    private bool _providerBusy;
+    private bool _loaded;
+
+    private static readonly (string Key, string Label)[] ProviderClasses =
+        [("crypto", "Crypto"), ("stock", "Stocks & ETFs"), ("metal", "Precious metals"), ("fx", "Currency rates")];
+
+    /// <summary>The providers able to price an asset class: the ones in use first, in the order they are asked.</summary>
+    private List<MarketDataProviderDto> ProvidersFor(string cls) =>
+        _providers.Where(p => p.AssetClasses.Contains(cls))
+            .OrderBy(p => p.Positions.GetValueOrDefault(cls) is var n and > 0 ? n : int.MaxValue)
+            .ThenBy(p => p.Name).ToList();
+
+    private List<string> OrderFor(string cls) =>
+        _providers.Where(p => p.Positions.GetValueOrDefault(cls) > 0).OrderBy(p => p.Positions[cls]).Select(p => p.Id).ToList();
+
+    private static string KeyStatus(MarketDataProviderDto p) =>
+        p.ApiKeyEnvVar is null ? "No API key needed"
+        : p.ApiKeySet ? $"API key set ({p.ApiKeyEnvVar})"
+        : p.RequiresApiKey ? $"Needs a free API key in {p.ApiKeyEnvVar}"
+        : $"No key needed; an optional free key in {p.ApiKeyEnvVar} raises the limits";
+
+    private static string Ordinal(int n) => n switch { 1 => "first", 2 => "second", 3 => "third", _ => $"{n}th" };
+
+    private async Task MoveProvider(string cls, string id, int delta)
+    {
+        var order = OrderFor(cls);
+        int i = order.IndexOf(id), j = i + delta;
+        if (i < 0 || j < 0 || j >= order.Count) return;
+        (order[i], order[j]) = (order[j], order[i]);
+        await SaveProviderOrder(cls, order);
+    }
+
+    private async Task ToggleProvider(string cls, string id)
+    {
+        var order = OrderFor(cls);
+        if (!order.Remove(id)) order.Add(id);
+        else if (order.Count == 0)
+        {
+            Toast.Show("Keep at least one provider for each kind of asset.", "error");
+            return;
+        }
+        await SaveProviderOrder(cls, order);
+    }
+
+    private async Task SaveProviderOrder(string cls, List<string> order)
+    {
+        _providerBusy = true;
+        try
+        {
+            var (ok, updated) = await Api.PutWithStatusAsync<List<MarketDataProviderDto>>("/api/settings/providers",
+                new { order = new Dictionary<string, List<string>> { [cls] = order } });
+            if (ok && updated is not null)
+            {
+                _providers = updated;
+                Toast.Show("Provider order saved", "success");
+            }
+            else Toast.Show("Could not save the provider order", "error");
+        }
+        finally { _providerBusy = false; }
+    }
     private IBrowserFile? _backupFile;
     private bool _importBusy;
 
@@ -538,22 +628,26 @@
     protected override async Task OnInitializedAsync()
     {
         TopBar.Set("Settings");
-        var session = await Api.GetAsync<SessionDto>("/api/auth/session");
+        var sessionTask = Api.GetAsync<SessionDto>("/api/auth/session");
+        var aboutTask = Api.GetAsync<AboutDto>("/api/settings/about");
+        var dbTask = Api.GetAsync<DatabaseInfoDto>("/api/settings/database");
+        var providersTask = Api.GetAsync<List<MarketDataProviderDto>>("/api/settings/providers");
+        await Task.WhenAll(sessionTask, aboutTask, dbTask, providersTask);
+        var session = await sessionTask;
         _base = session?.BaseCurrency ?? "EUR";
         _twoFactorEnabled = session?.TwoFactorEnabled ?? false;
         _sessionLifetime = session?.SessionLifetimeMinutes ?? 120;
-        var about = await Api.GetAsync<AboutDto>("/api/settings/about");
-        _version = about?.Version ?? "1.0.0";
-        var db = await Api.GetAsync<DatabaseInfoDto>("/api/settings/database");
+        _version = (await aboutTask)?.Version ?? "1.0.0";
+        var db = await dbTask;
         if (db is not null)
         {
             _dbPath = db.Path;
             _dbHealthy = db.Exists;
             _dbStatus = db.Exists ? "Database file exists and is accessible." : "Database file will be created at this location.";
         }
-        _providers = await Api.GetAsync<List<MarketDataProviderDto>>("/api/settings/providers") ?? [];
-        await LoadAll();
-        await LoadAccess();
+        _providers = await providersTask ?? [];
+        await Task.WhenAll(LoadAll(), LoadAccess());
+        _loaded = true;
     }
 
     private async Task LoadAll()

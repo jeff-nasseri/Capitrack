@@ -20,12 +20,7 @@ public sealed class GetQuotesQueryHandler(
         if (request.Symbols is null || request.Symbols.Count == 0)
             throw new ValidationException("symbols is required");
 
-        var results = new Dictionary<string, QuoteDto?>();
-        foreach (var sym in request.Symbols)
-        {
-            var s = sym.ToUpperInvariant();
-            results[s] = await prices.GetQuoteAsync(s);
-        }
-        return results;
+        var quotes = await prices.GetQuotesAsync(request.Symbols);
+        return request.Symbols.Select(s => s.ToUpperInvariant()).Distinct().ToDictionary(s => s, s => quotes.GetValueOrDefault(s));
     }
 }

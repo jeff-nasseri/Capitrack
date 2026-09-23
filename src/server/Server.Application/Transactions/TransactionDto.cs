@@ -17,7 +17,9 @@ namespace Server.Application.Transactions;
 /// <param name="CreatedAt">When the record was created.</param>
 /// <param name="AccountName">The owning account's name, if resolved.</param>
 /// <param name="Tags">The tags attached to the transaction.</param>
+/// <param name="OccurredAt">The exact UTC instant, when the source provides one.</param>
+/// <param name="ExternalId">The source's own transaction id (e.g. a blockchain hash), when it has one.</param>
 public record TransactionDto(
-    int Id, int AccountId, string Symbol, string Type, double Quantity, double Price,
-    double Fee, string Currency, string Date, string Notes, bool IsStaked, DateTime CreatedAt,
-    string? AccountName, List<TagDto> Tags);
+    int Id, int AccountId, string Symbol, string Type, decimal Quantity, decimal Price,
+    decimal Fee, string Currency, string Date, string Notes, bool IsStaked, DateTime CreatedAt,
+    string? AccountName, List<TagDto> Tags, DateTime? OccurredAt = null, string? ExternalId = null);

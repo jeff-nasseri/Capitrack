@@ -6,7 +6,7 @@
 <div class="page page-wide">
     @if (_loading)
     {
-        <div class="loading-spinner">Loading holdings…</div>
+        <LoadingState Text="Loading holdings…" />
     }
     else
     {
@@ -37,7 +37,8 @@
     private bool _loading = true;
     private string _query = "";
     private string _base = "USD";
-    private double _totVal, _totGain, _gp;
+    private decimal _totVal, _totGain;
+    private double _gp;
     private int _winners;
 
     protected override async Task OnInitializedAsync()
@@ -47,17 +48,12 @@
         var accounts = await Api.GetAsync<List<AccountDto>>("/api/accounts") ?? [];
         State.Accounts = accounts;
 
-        var all = new List<EnrichedHolding>();
-        foreach (var a in accounts)
+        var perAccount = await Task.WhenAll(accounts.Select(async a => (Account: a, Holdings: await Api.GetAsync<List<HoldingDto>>($"/api/accounts/{a.Id}/holdings") ?? [])));
+        var all = perAccount.SelectMany(x => x.Holdings.Select(h => new EnrichedHolding
         {
-            var hs = await Api.GetAsync<List<HoldingDto>>($"/api/accounts/{a.Id}/holdings") ?? [];
-            foreach (var h in hs)
-                all.Add(new EnrichedHolding
-                {
-                    Symbol = h.Symbol, Quantity = h.Quantity, AvgCost = h.AvgCost, TotalCost = h.TotalCost,
-                    TransactionCount = h.TransactionCount, AccountId = a.Id, AccountCurrency = a.Currency
-                });
-        }
+            Symbol = h.Symbol, Quantity = h.Quantity, AvgCost = h.AvgCost, TotalCost = h.TotalCost,
+            TransactionCount = h.TransactionCount, AccountId = x.Account.Id, AccountCurrency = x.Account.Currency
+        })).ToList();
 
         var symbols = all.Select(h => h.Symbol).Distinct().ToList();
         var prices = symbols.Count > 0
@@ -72,17 +68,20 @@
             var cb = h.Quantity * (h.AvgCost ?? 0);
             h.Price = price; h.Name = p?.Name ?? h.Symbol; h.ChangePercent = p?.ChangePercent ?? 0;
             h.MarketValue = mv; h.CostBasis = cb; h.Gain = mv - cb;
-            h.GainPct = cb > 0 ? (mv - cb) / cb * 100 : 0; h.Currency = p?.Currency ?? "USD";
+            h.GainPct = cb > 0 ? (double)((mv - cb) / cb * 100) : 0; h.Currency = p?.Currency ?? "USD";
         }
 
         _holdings = all.OrderByDescending(h => h.MarketValue).ToList();
         State.AllHoldings = _holdings;
 
-        _base = _holdings.FirstOrDefault()?.Currency ?? "USD";
-        _totVal = _holdings.Sum(h => h.MarketValue);
-        _totGain = _holdings.Sum(h => h.Gain);
+        // totals in the base currency, at the rates the dashboard uses (holdings are quoted in several currencies)
+        var currencies = _holdings.Select(h => h.Currency).Distinct();
+        var fx = await Api.GetAsync<ExchangeRatesDto>($"/api/prices/rates?currencies={Uri.EscapeDataString(string.Join(',', currencies))}") ?? new ExchangeRatesDto();
+        _base = fx.BaseCurrency;
+        _totVal = _holdings.Sum(h => fx.ToBase(h.MarketValue, h.Currency));
+        _totGain = _holdings.Sum(h => fx.ToBase(h.Gain, h.Currency));
         var cost = _totVal - _totGain;
-        _gp = cost > 0 ? _totGain / cost * 100 : 0;
+        _gp = cost > 0 ? (double)(_totGain / cost * 100) : 0;
         _winners = _holdings.Count(h => h.Gain >= 0);
 
         ApplyFilter();

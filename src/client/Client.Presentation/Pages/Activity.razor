@@ -36,7 +36,7 @@
 
     @if (_loading)
     {
-        <div class="loading-spinner">Loading…</div>
+        <LoadingState Text="Loading transactions…" />
     }
     else if (_transactions.Count == 0)
     {
@@ -118,7 +118,7 @@
         await Load();
     }
 
-    private RenderFragment Actions => @<button class="btn btn-ghost btn-sm" @onclick="Export"><Icon Name="download" /> Export</button>;
+    private RenderFragment Actions => @<button class="btn btn-ghost btn-sm" @onclick="Export"><Icon Name="upload" /> Export</button>;
 
     private async Task Load()
     {

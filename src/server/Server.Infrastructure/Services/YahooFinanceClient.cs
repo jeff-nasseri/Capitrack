@@ -49,6 +49,36 @@ public class YahooFinanceClient : IYahooFinanceClient
         finally { _crumbLock.Release(); }
     }
 
+    public async Task<Dictionary<string, QuoteDto>> QuotesAsync(IReadOnlyList<string> symbols)
+    {
+        var quotes = new Dictionary<string, QuoteDto>(StringComparer.OrdinalIgnoreCase);
+        if (symbols.Count == 0) return quotes;
+        try
+        {
+            await EnsureCrumbAsync();
+            if (_crumb == null) return quotes;
+            var list = string.Join(',', symbols.Select(s => Uri.EscapeDataString(s.ToUpperInvariant())));
+            var resp = await _http.GetAsync($"https://query1.finance.yahoo.com/v7/finance/quote?symbols={list}&crumb={Uri.EscapeDataString(_crumb)}");
+            if (resp.StatusCode == HttpStatusCode.Unauthorized) { _crumb = null; return quotes; }
+            if (!resp.IsSuccessStatusCode) return quotes;
+            using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+            foreach (var q in doc.RootElement.GetProperty("quoteResponse").GetProperty("result").EnumerateArray())
+            {
+                if (GetString(q, "symbol") is not { } symbol || (GetDecimal(q, "regularMarketPrice") ?? 0) <= 0) continue;
+                quotes[symbol] = new QuoteDto
+                {
+                    Symbol = symbol.ToUpperInvariant(),
+                    Price = GetDecimal(q, "regularMarketPrice") ?? 0,
+                    Currency = GetString(q, "currency") ?? "USD",
+                    Name = GetString(q, "shortName") ?? GetString(q, "longName") ?? symbol,
+                    ChangePercent = GetDouble(q, "regularMarketChangePercent") ?? 0
+                };
+            }
+        }
+        catch (Exception ex) { _log.LogWarning(ex, "Yahoo v7 multi-quote failed for {Count} symbols", symbols.Count); }
+        return quotes;
+    }
+
     public async Task<QuoteDto?> QuoteAsync(string symbol)
     {
         symbol = symbol.ToUpperInvariant();
@@ -71,7 +101,7 @@ public class YahooFinanceClient : IYahooFinanceClient
                         return new QuoteDto
                         {
                             Symbol = symbol,
-                            Price = GetDouble(q, "regularMarketPrice") ?? 0,
+                            Price = GetDecimal(q, "regularMarketPrice") ?? 0,
                             Currency = GetString(q, "currency") ?? "USD",
                             Name = GetString(q, "shortName") ?? GetString(q, "longName") ?? symbol,
                             ChangePercent = GetDouble(q, "regularMarketChangePercent") ?? 0
@@ -94,9 +124,9 @@ public class YahooFinanceClient : IYahooFinanceClient
                 if (result.ValueKind == JsonValueKind.Array && result.GetArrayLength() > 0)
                 {
                     var meta = result[0].GetProperty("meta");
-                    var price = GetDouble(meta, "regularMarketPrice") ?? 0;
-                    var prev = GetDouble(meta, "chartPreviousClose") ?? GetDouble(meta, "previousClose") ?? 0;
-                    var changePct = prev > 0 ? (price - prev) / prev * 100 : 0;
+                    var price = GetDecimal(meta, "regularMarketPrice") ?? 0;
+                    var prev = GetDecimal(meta, "chartPreviousClose") ?? GetDecimal(meta, "previousClose") ?? 0;
+                    var changePct = prev > 0 ? (double)((price - prev) / prev * 100) : 0;
                     return new QuoteDto
                     {
                         Symbol = symbol,
@@ -138,9 +168,32 @@ public class YahooFinanceClient : IYahooFinanceClient
             var date = DateTimeOffset.FromUnixTimeSeconds(ts[i].GetInt64()).UtcDateTime;
             list.Add(new HistoryPointDto(
                 date,
-                Index(closes, i), Index(opens, i), Index(highs, i), Index(lows, i), Index(vols, i)));
+                Index(closes, i), Index(opens, i), Index(highs, i), Index(lows, i), IndexDouble(vols, i)));
         }
         return list;
+    }
+
+    public async Task<(List<HistoryPointDto> Points, string? Currency)> ChartRangeAsync(string symbol, DateTime from, DateTime to, string interval)
+    {
+        symbol = symbol.ToUpperInvariant();
+        var p1 = new DateTimeOffset(DateTime.SpecifyKind(from, DateTimeKind.Utc)).ToUnixTimeSeconds();
+        var p2 = new DateTimeOffset(DateTime.SpecifyKind(to, DateTimeKind.Utc)).ToUnixTimeSeconds();
+        var url = $"https://query1.finance.yahoo.com/v8/finance/chart/{Uri.EscapeDataString(symbol)}?period1={p1}&period2={p2}&interval={interval}";
+        var list = new List<HistoryPointDto>();
+        var resp = await _http.GetAsync(url);
+        if ((int)resp.StatusCode == 404) return (list, null); // unknown symbol
+        if (!resp.IsSuccessStatusCode) throw new HttpRequestException($"Yahoo {(int)resp.StatusCode}");
+        using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+        var result = doc.RootElement.GetProperty("chart").GetProperty("result");
+        if (result.ValueKind != JsonValueKind.Array || result.GetArrayLength() == 0) return (list, null);
+        var r0 = result[0];
+        var currency = r0.TryGetProperty("meta", out var meta) ? GetString(meta, "currency") : null;
+        if (!r0.TryGetProperty("timestamp", out var ts)) return (list, currency);
+        var quote = r0.GetProperty("indicators").GetProperty("quote")[0];
+        var closes = quote.TryGetProperty("close", out var c) ? c : default;
+        for (var i = 0; i < ts.GetArrayLength(); i++)
+            list.Add(new HistoryPointDto(DateTimeOffset.FromUnixTimeSeconds(ts[i].GetInt64()).UtcDateTime, Index(closes, i), null, null, null, null));
+        return (list, currency);
     }
 
     public async Task<List<SearchResultDto>> SearchAsync(string query)
@@ -164,12 +217,22 @@ public class YahooFinanceClient : IYahooFinanceClient
         return list;
     }
 
-    private static double? Index(JsonElement arr, int i)
+    private static decimal? Index(JsonElement arr, int i)
+    {
+        if (arr.ValueKind != JsonValueKind.Array || i >= arr.GetArrayLength()) return null;
+        var el = arr[i];
+        return el.ValueKind == JsonValueKind.Number && el.TryGetDecimal(out var d) ? d : null;
+    }
+
+    private static double? IndexDouble(JsonElement arr, int i)
     {
         if (arr.ValueKind != JsonValueKind.Array || i >= arr.GetArrayLength()) return null;
         var el = arr[i];
         return el.ValueKind == JsonValueKind.Number ? el.GetDouble() : null;
     }
+
+    private static decimal? GetDecimal(JsonElement e, string prop) =>
+        e.TryGetProperty(prop, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetDecimal(out var d) ? d : null;
 
     private static double? GetDouble(JsonElement e, string prop) =>
         e.TryGetProperty(prop, out var v) && v.ValueKind == JsonValueKind.Number ? v.GetDouble() : null;

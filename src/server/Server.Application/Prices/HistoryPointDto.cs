@@ -7,4 +7,4 @@ namespace Server.Application.Prices;
 /// <param name="High">The session high.</param>
 /// <param name="Low">The session low.</param>
 /// <param name="Volume">The traded volume.</param>
-public record HistoryPointDto(DateTime Date, double? Close, double? Open, double? High, double? Low, double? Volume);
+public record HistoryPointDto(DateTime Date, decimal? Close, decimal? Open, decimal? High, decimal? Low, double? Volume);

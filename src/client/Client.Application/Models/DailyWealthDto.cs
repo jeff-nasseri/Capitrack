@@ -4,8 +4,8 @@ namespace Client.Application.Models;
 public class DailyWealthDto
 {
     public string Date { get; set; } = "";
-    public double TotalWealth { get; set; }
-    public double TotalCost { get; set; }
+    public decimal TotalWealth { get; set; }
+    public decimal TotalCost { get; set; }
     public string BaseCurrency { get; set; } = "EUR";
     public System.Text.Json.JsonElement Details { get; set; }
 }

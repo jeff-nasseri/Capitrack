@@ -4,10 +4,11 @@ namespace Client.Application.Models;
 public class HoldingDto
 {
     public string Symbol { get; set; } = "";
-    public double Quantity { get; set; }
-    public double? AvgCost { get; set; }
-    public double TotalCost { get; set; }
+    public decimal Quantity { get; set; }
+    public decimal? AvgCost { get; set; }
+    public decimal TotalCost { get; set; }
     public int TransactionCount { get; set; }
     public string? FirstTransaction { get; set; }
     public string? LastTransaction { get; set; }
+    public string? CostCurrency { get; set; }
 }

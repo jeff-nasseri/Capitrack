@@ -246,11 +246,40 @@ Import a CSV file. **`multipart/form-data`** with:
 `200`:
 
 ```json
-{ "imported": 8, "skipped": 2, "total": 10, "errors": [], "format": "revolut-stocks" }
+{ "imported": 8, "skipped": 2, "total": 10, "errors": [], "format": "revolut-stocks",
+  "rejected": 1, "rejections": ["Row 7: Unsupported transaction type \"JOINT\""], "updated": 0 }
 ```
 
-`400` if `file` missing or the CSV cannot be parsed; `404` if the account doesn't exist.
-See [csv-import.md](csv-import.md) for format details.
+`skipped` counts legs already present (duplicates); `updated` counts rows refreshed because their
+timing changed (pending → confirmed); every rejected row is listed with its reason. `400` if
+`file` missing or the CSV cannot be parsed; `404` if the account doesn't exist. See
+[csv-import.md](csv-import.md) for format details and how re-imports stay idempotent.
+
+### POST /api/transactions/import/preview
+
+Check & Import: plans importing one or more files into an account and **writes nothing**.
+`multipart/form-data` with `account_id`, one or more `files`, and optionally `selection` (JSON,
+one entry per file: `[{ "rows": [1, 2], "staked": [2] }]`; omitted = every row). `200`:
+
+```json
+{ "files": [ { "file_name": "Bitcoin.csv", "format": "trezor",
+    "rows": [ { "row": 1, "status": "new", "reason": null, "date": "2026-01-18",
+                "occurred_at": "2026-01-18T20:07:11Z", "can_stake": false,
+                "legs": [ { "symbol": "BTC-USD", "type": "transfer_in", "quantity": 0.001,
+                            "price": 95000.12, "fee": 0, "currency": "USD", "status": "new" } ] } ],
+    "summary": { "rows_read": 28, "new": 28, "duplicates": 0, "updates": 0, "rejected": 0, "unselected": 0,
+                 "counts_by_type": { "transfer_in": 22, "transfer_out": 1, "fee": 1 },
+                 "assets": [ { "symbol": "BTC-USD", "received": 0.2, "sent": 0.02, "fees": 0.00000517,
+                               "current_balance": 0, "resulting_balance": 0.17999483 } ] } } ] }
+```
+
+Row `status` is `new`, `duplicate`, `update`, `rejected` (with `reason`) or `unselected`.
+
+### POST /api/transactions/import/selected
+
+Imports the rows kept in the preview: the same form (`account_id`, `files`, `selection`). The
+server re-reads the files and runs the same plan, so the result matches the preview. Response
+as for `import/csv`.
 
 ### POST /api/transactions/import/detect
 
@@ -390,29 +419,33 @@ with `rate: 1`. `400` if a param is missing; `404` if no rate exists for the pai
 
 ## Prices — `/api/prices`
 
-A quote DTO carries only the fields Yahoo's quote/chart-meta provides:
+Prices come from the providers chosen in Settings > Market Data (per asset class, with fallback;
+see [architecture.md](architecture.md#market-data-providers)). A quote DTO carries:
 
 ```json
 { "symbol": "AAPL", "price": 187.4, "currency": "USD", "name": "Apple Inc.", "change_percent": 0.83 }
 ```
 
-A `stale` boolean is added only when the value came from a stale cache. (Richer fields such
-as P/E or market cap are not fetched — see [architecture.md](architecture.md).)
+A `stale` boolean is added only when the value came from a stale cache. A crypto pair is quoted
+in its own currency (`BTC-USD` in USD) even when the provider that answered prices it in EUR.
+(Richer fields such as P/E or market cap are not fetched.)
 
 ### GET /api/prices/quote/{symbol}
 
-Live quote for one symbol (5-minute cache, stale fallback). `200` → quote DTO. `404`
+Live quote for one symbol (5-minute cache, stale fallback; a symbol no provider can price is
+not asked for again for 10 minutes). `200` → quote DTO. `404`
 `{ "error": "Could not fetch price for X" }` if nothing is available.
 
 ### POST /api/prices/quotes
 
-Batch quotes. Body `{ "symbols": ["AAPL", "BTC-USD"] }`. Returns a **map keyed by symbol**
-(keys are not snake_cased):
+Batch quotes: uncached symbols are fetched together (one request per provider). Body
+`{ "symbols": ["AAPL", "BTC-USD"] }`. Returns a **map keyed by symbol** (keys are not
+snake_cased); a symbol nobody could price maps to `null`:
 
 ```json
 {
   "AAPL":    { "symbol": "AAPL", "price": 187.4, "currency": "USD", "name": "Apple Inc.", "change_percent": 0.83 },
-  "BTC-USD": { "symbol": "BTC-USD", "price": 0, "error": "Service unavailable" }
+  "MSVP-USD": null
 }
 ```
 
@@ -420,9 +453,10 @@ Batch quotes. Body `{ "symbols": ["AAPL", "BTC-USD"] }`. Returns a **map keyed b
 
 ### GET /api/prices/history/{symbol}
 
-Historical OHLCV. Query `period` (default `1y`): `1w`, `1m`, `3m`, `6m`, `1y`, `5y`, or
-`max`. (The interval is chosen automatically: hourly for `1w`, daily for `1m`, otherwise
-weekly.) `200` → array of points with a non-null close:
+Price history. Query `period` (default `1y`): `1w`, `1m`, `3m`, `6m`, `1y`, `5y`, or `max`.
+Daily closes from the providers (cached), in the currency the symbol is quoted in, ending with
+the latest quote; weekly points beyond ~400 days; Yahoo's hourly candles for `1w` when
+available. `200` → array of points with a non-null close:
 
 ```json
 [ { "date": "2024-01-05T00:00:00", "close": 181.2, "open": 180.0, "high": 182.1, "low": 179.5, "volume": 51000000 } ]
@@ -454,17 +488,32 @@ Total wealth, cost, and gain in the base currency, plus a per-account breakdown.
   "accounts": [
     { "account_id": 1, "account_name": "Crypto Portfolio", "market_value": 12000.0, "cost_basis": 9000.0, "holdings_count": 2 }
   ],
-  "holdings_count": 5
+  "holdings_count": 5,
+  "today_change": 125.4
 }
 ```
 
-`500` on error.
+Values are converted to the base currency with the manual rate from Currencies (or its
+inverse), otherwise the latest ECB reference rate. `today_change` is the session's change in
+value, in the base currency. `500` on error.
+
+### GET /api/prices/rates
+
+Today's rates to the base currency, the ones the dashboard converts with. Query `currencies`
+(comma-separated, e.g. `USD,GBP`). `200`:
+
+```json
+{ "base_currency": "EUR", "rates": { "EUR": 1, "USD": 0.8543, "GBP": 1.1712 } }
+```
+
+A currency with no known rate is left out.
 
 ### GET /api/prices/portfolio/history
 
-Portfolio value over time (transaction replay over historical prices, **no FX conversion**).
-Query `account_id` (optional, scope to one account) and `period` (default `3m`): `1w`, `1m`,
-`3m`, `6m`, `ytd`, `1y`, `5y`, `all`.
+Portfolio value over time: transactions replayed over cached daily closes, **in the base
+currency** at each day's ECB rate (today: the dashboard's rate). Starts at the first
+transaction; daily points up to ~3 months, weekly beyond. Query `account_id` (optional, scope to
+one account) and `period` (default `3m`): `1w`, `1m`, `3m`, `6m`, `ytd`, `1y`, `5y`, `all`.
 
 ```json
 [ { "date": "2024-03-01", "value": 18250.0, "cost": 17000.0, "gain": 1250.0 } ]
@@ -521,6 +570,27 @@ Set the SQLite path (persisted to `settings.json`; takes effect on restart). Bod
 ### POST /api/settings/refresh
 
 A no-op "refresh" hook. `200` → `{ "message": "Application refreshed successfully", "db_path": "..." }`.
+
+### GET /api/settings/providers
+
+The market-data providers, what they cover and how they are configured:
+
+```json
+[ { "id": "kraken", "name": "Kraken", "description": "…", "enabled": true, "requires_api_key": false,
+    "api_key_set": false, "website": "https://docs.kraken.com/api/", "is_default": true,
+    "asset_classes": ["crypto"], "limits": "Free, no key. About 1 request/second. …",
+    "api_key_env_var": null, "api_key_url": null, "positions": { "crypto": 1 }, "configured": true } ]
+```
+
+`positions` is the provider's 1-based place in each asset class's order.
+
+### PUT /api/settings/providers
+
+Sets which providers are used, and in what order, per asset class (`crypto`, `stock`, `metal`,
+`fx`). Body `{ "order": { "crypto": ["kraken", "bitvavo", "coingecko"] } }`; omitted classes
+keep their order. `200` → the updated provider list; `400` if a provider cannot price that
+class. API keys are never set here: they come from the server's environment
+(`COINGECKO_DEMO_API_KEY`, `TWELVE_DATA_API_KEY`).
 
 ### GET /api/settings/about
 

@@ -4,13 +4,13 @@ namespace Server.Domain.ValueObjects;
 public sealed class Money : ValueObject
 {
     /// <summary>The monetary amount.</summary>
-    public double Amount { get; }
+    public decimal Amount { get; }
 
     /// <summary>The currency the amount is denominated in.</summary>
     public CurrencyCode Currency { get; }
 
     /// <summary>Creates a money value from an amount and currency.</summary>
-    public Money(double amount, CurrencyCode currency)
+    public Money(decimal amount, CurrencyCode currency)
     {
         Amount = amount;
         Currency = currency;
@@ -34,7 +34,7 @@ public sealed class Money : ValueObject
     }
 
     /// <summary>Scales the amount by a factor, preserving the currency.</summary>
-    public Money Multiply(double factor) => new(Amount * factor, Currency);
+    public Money Multiply(decimal factor) => new(Amount * factor, Currency);
 
     private void EnsureSameCurrency(Money other)
     {
@@ -45,7 +45,7 @@ public sealed class Money : ValueObject
     /// <inheritdoc />
     protected override IEnumerable<object?> GetEqualityComponents()
     {
-        yield return Math.Round(Amount, 8);
+        yield return Amount;
         yield return Currency;
     }
 

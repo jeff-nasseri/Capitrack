@@ -26,11 +26,17 @@
         </div>
     </div>
 
+    @if (_loadedKey != $"{AccountId}/{Symbol}")
+    {
+        <LoadingState Text="Loading position…" />
+    }
+    else
+    {
     @* price + delta *@
     <div class="flex gap-2" style="align-items:flex-end;margin-top:18px;">
         <div class="bignum tnum">@Format.Money(_price, _currency)</div>
         <div class="delta @(_changePct >= 0 ? "up" : "down")" style="font-size:0.9rem;padding-bottom:7px;">
-            @Format.Signed(_priceChange, _currency) (@Format.Pct(_changePct)) <span class="sub" style="font-weight:400;">past 3 months</span>
+            @Format.Signed(_priceChange, _currency) (@Format.Pct(_changePct)) <span class="sub" style="font-weight:400;">today</span>
         </div>
     </div>
 
@@ -39,7 +45,7 @@
         <div class="flex-col gap-4">
             <div class="card" style="overflow:hidden;">
                 <div style="padding:16px 12px;">
-                    <PeriodChart Data="_chart" Labels="_labels" Currency="@_currency" Height="230" Selected="@_period" SelectedChanged="LoadChart" />
+                    <PeriodChart Data="_chart" Labels="_labels" Currency="@_currency" Height="230" Selected="@_period" SelectedChanged="LoadChart" Loading="_chartLoading" />
                 </div>
             </div>
 
@@ -114,11 +120,11 @@
                 <div class="card card-pad">
                     <div class="section-title" style="margin-bottom:10px;">Quote details</div>
                     <div class="grid" style="grid-template-columns:1fr 1fr;gap:0 28px;">
-                        <div class="flex row-between" style="padding:10px 0;border-bottom:1px solid var(--hairline);font-size:0.86rem;"><span class="sub">Market Cap</span><span class="num" style="font-weight:600;">@Format.Compact(0)</span></div>
+                        <div class="flex row-between" style="padding:10px 0;border-bottom:1px solid var(--hairline);font-size:0.86rem;"><span class="sub">Market Cap</span><span class="num" style="font-weight:600;">@Format.Compact((double?)0)</span></div>
                         <div class="flex row-between" style="padding:10px 0;border-bottom:1px solid var(--hairline);font-size:0.86rem;"><span class="sub">P/E Ratio</span><span class="num" style="font-weight:600;">N/A</span></div>
-                        <div class="flex row-between" style="padding:10px 0;border-bottom:1px solid var(--hairline);font-size:0.86rem;"><span class="sub">52W High</span><span class="num" style="font-weight:600;">@Format.Money(0, _currency)</span></div>
-                        <div class="flex row-between" style="padding:10px 0;border-bottom:1px solid var(--hairline);font-size:0.86rem;"><span class="sub">52W Low</span><span class="num" style="font-weight:600;">@Format.Money(0, _currency)</span></div>
-                        <div class="flex row-between" style="padding:10px 0;border-bottom:1px solid var(--hairline);font-size:0.86rem;"><span class="sub">Avg Volume</span><span class="num" style="font-weight:600;">@Format.Compact(0)</span></div>
+                        <div class="flex row-between" style="padding:10px 0;border-bottom:1px solid var(--hairline);font-size:0.86rem;"><span class="sub">52W High</span><span class="num" style="font-weight:600;">@Format.Money(0m, _currency)</span></div>
+                        <div class="flex row-between" style="padding:10px 0;border-bottom:1px solid var(--hairline);font-size:0.86rem;"><span class="sub">52W Low</span><span class="num" style="font-weight:600;">@Format.Money(0m, _currency)</span></div>
+                        <div class="flex row-between" style="padding:10px 0;border-bottom:1px solid var(--hairline);font-size:0.86rem;"><span class="sub">Avg Volume</span><span class="num" style="font-weight:600;">@Format.Compact((double?)0)</span></div>
                         <div class="flex row-between" style="padding:10px 0;border-bottom:1px solid var(--hairline);font-size:0.86rem;"><span class="sub">Dividend Yield</span><span class="num" style="font-weight:600;">N/A</span></div>
                     </div>
                 </div>
@@ -147,6 +153,7 @@
             <button class="btn btn-ghost btn-block mt-4" style="width:100%;" @onclick="ShowAddTx"><Icon Name="plus" /> Add transaction</button>
         </div>
     </div>
+    }
 </div>
 
 @code {
@@ -162,9 +169,11 @@
     private string _period = "3m";
     private string _currency = "USD";
     private string _typeLabel = "STOCK";
-    private double _price, _changePct, _priceChange, _totalQty, _avgCost, _bookValue, _marketValue;
-    private double _totalReturn, _totalReturnPct, _todayReturn, _portfolioPct;
+    private decimal _price, _priceChange, _totalQty, _avgCost, _bookValue, _marketValue, _totalReturn, _todayReturn;
+    private double _changePct, _totalReturnPct, _portfolioPct;
     private int? _openTxId;
+    private string? _loadedKey;
+    private bool _chartLoading = true;
 
     private static readonly (string Label, bool IsVolume)[] _overviewStats =
         [("Open", false), ("Close", false), ("High", false), ("Low", false), ("Prev. Close", false), ("Volume", true)];
@@ -182,34 +191,37 @@
     {
         var quoteTask = Api.GetAsync<QuoteDto>($"/api/prices/quote/{Uri.EscapeDataString(Symbol)}");
         var txTask = Api.GetAsync<List<TransactionDto>>($"/api/transactions?account_id={AccountId}&symbol={Uri.EscapeDataString(Symbol)}");
-        await Task.WhenAll(quoteTask, txTask);
+        var holdingsTask = Api.GetAsync<List<HoldingDto>>($"/api/accounts/{AccountId}/holdings");
+        await Task.WhenAll(quoteTask, txTask, holdingsTask);
         _quote = await quoteTask;
         _transactions = await txTask ?? [];
 
-        double totalQty = 0, totalCost = 0, totalBuyQty = 0;
-        foreach (var tx in _transactions)
-        {
-            if (tx.Type is "buy" or "transfer_in") { totalQty += tx.Quantity; totalCost += tx.Quantity * tx.Price; totalBuyQty += tx.Quantity; }
-            else if (tx.Type is "sell" or "transfer_out") { totalQty -= tx.Quantity; }
-        }
+        // the server's holding applies the same rules everywhere (fees, staking, average cost)
+        var holding = (await holdingsTask ?? []).FirstOrDefault(h => string.Equals(h.Symbol, Symbol, StringComparison.OrdinalIgnoreCase));
+        var totalQty = holding?.Quantity ?? 0;
 
         _price = _quote?.Price ?? 0;
         _currency = _quote?.Currency ?? "USD";
         _changePct = _quote?.ChangePercent ?? 0;
-        _priceChange = _price * _changePct / 100;
+        _priceChange = _price * (decimal)_changePct / 100;
         _totalQty = totalQty;
         _marketValue = totalQty * _price;
-        _avgCost = totalBuyQty > 0 ? totalCost / totalBuyQty : 0;
-        _bookValue = totalQty * _avgCost;
+        _avgCost = holding?.AvgCost ?? 0;
+        _bookValue = holding?.TotalCost ?? 0;
         _totalReturn = _marketValue - _bookValue;
-        _totalReturnPct = _bookValue > 0 ? _totalReturn / _bookValue * 100 : 0;
-        _todayReturn = totalQty * (_price * _changePct / 100);
+        _totalReturnPct = _bookValue > 0 ? (double)(_totalReturn / _bookValue * 100) : 0;
+        _todayReturn = totalQty * (_price * (decimal)_changePct / 100);
         _typeLabel = AssetType(Symbol);
 
-        var summary = State.DashboardSummary ?? await Api.GetAsync<DashboardSummaryDto>("/api/prices/dashboard/summary");
-        var totalWealth = summary?.TotalWealth ?? _marketValue;
-        _portfolioPct = totalWealth > 0 ? _marketValue / totalWealth * 100 : 0;
+        // share of the portfolio: this position in the base currency against the dashboard's total
+        var summaryTask = State.DashboardSummary is { } known ? Task.FromResult<DashboardSummaryDto?>(known) : Api.GetAsync<DashboardSummaryDto>("/api/prices/dashboard/summary");
+        var fxTask = Api.GetAsync<ExchangeRatesDto>($"/api/prices/rates?currencies={Uri.EscapeDataString(_currency)}");
+        await Task.WhenAll(summaryTask, fxTask);
+        var totalWealth = (await summaryTask)?.TotalWealth ?? 0;
+        var valueInBase = (await fxTask ?? new ExchangeRatesDto()).ToBase(_marketValue, _currency);
+        _portfolioPct = totalWealth > 0 ? (double)(valueInBase / totalWealth * 100) : 0;
 
+        _loadedKey = $"{AccountId}/{Symbol}";
         StateHasChanged();
         await LoadChart(_period);
     }
@@ -217,10 +229,14 @@
     private async Task LoadChart(string period)
     {
         _period = period;
+        _chartLoading = true;
+        StateHasChanged();
         var data = await Api.GetAsync<List<HistoryPointDto>>($"/api/prices/history/{Uri.EscapeDataString(Symbol)}?period={period}");
+        if (period != _period) return; // a newer period was picked meanwhile
         var points = (data ?? []).Where(d => d.Close != null).ToList();
-        _chart = points.Select(d => d.Close ?? 0).ToList();
+        _chart = points.Select(d => (double)(d.Close ?? 0)).ToList();
         _labels = BuildLabels(points.Select(d => d.Date).ToList());
+        _chartLoading = false;
         StateHasChanged();
     }
 

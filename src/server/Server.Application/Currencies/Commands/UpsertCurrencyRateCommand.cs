@@ -6,7 +6,7 @@ namespace Server.Application.Currencies.Commands;
 /// <param name="FromCurrency">The source currency code (required).</param>
 /// <param name="ToCurrency">The target currency code (required).</param>
 /// <param name="Rate">The conversion rate (required).</param>
-public record UpsertCurrencyRateCommand(string? FromCurrency, string? ToCurrency, double? Rate)
+public record UpsertCurrencyRateCommand(string? FromCurrency, string? ToCurrency, decimal? Rate)
     : IRequest<CurrencyRateDto>;
 
 /// <summary>Validates <see cref="UpsertCurrencyRateCommand"/>.</summary>

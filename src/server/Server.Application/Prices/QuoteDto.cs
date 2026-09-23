@@ -9,7 +9,7 @@ public class QuoteDto
     public string Symbol { get; set; } = "";
 
     /// <summary>The latest price.</summary>
-    public double Price { get; set; }
+    public decimal Price { get; set; }
 
     /// <summary>The quote currency code.</summary>
     public string Currency { get; set; } = "USD";

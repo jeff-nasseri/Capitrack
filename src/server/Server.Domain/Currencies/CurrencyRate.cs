@@ -10,7 +10,7 @@ public sealed class CurrencyRate : AggregateRoot<int>
     public CurrencyCode ToCurrency { get; private set; } = default!;
 
     /// <summary>The conversion rate from source to target.</summary>
-    public double Rate { get; private set; }
+    public decimal Rate { get; private set; }
 
     /// <summary>When the rate was last updated.</summary>
     public DateTime UpdatedAt { get; private set; }
@@ -18,11 +18,11 @@ public sealed class CurrencyRate : AggregateRoot<int>
     private CurrencyRate() { }
 
     /// <summary>Creates a new currency rate.</summary>
-    public static CurrencyRate Create(CurrencyCode from, CurrencyCode to, double rate) =>
+    public static CurrencyRate Create(CurrencyCode from, CurrencyCode to, decimal rate) =>
         new() { FromCurrency = from, ToCurrency = to, Rate = rate };
 
     /// <summary>Updates the currency pair and rate.</summary>
-    public void Update(CurrencyCode from, CurrencyCode to, double rate)
+    public void Update(CurrencyCode from, CurrencyCode to, decimal rate)
     {
         FromCurrency = from;
         ToCurrency = to;
@@ -30,5 +30,5 @@ public sealed class CurrencyRate : AggregateRoot<int>
     }
 
     /// <summary>Updates only the rate value.</summary>
-    public void SetRate(double rate) => Rate = rate;
+    public void SetRate(decimal rate) => Rate = rate;
 }

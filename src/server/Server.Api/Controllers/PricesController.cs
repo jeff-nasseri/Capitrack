@@ -21,6 +21,12 @@ public sealed class PricesController(IMediator mediator) : ControllerBase
     [HttpGet("search/{query}")]
     public async Task<IActionResult> Search(string query) => Ok(await mediator.Send(new SearchSymbolsQuery(query)));
 
+    /// <summary>Today's rates to the base currency for the given comma-separated currencies (manual rate, else ECB).</summary>
+    [HttpGet("rates")]
+    public async Task<IActionResult> Rates([FromQuery] string? currencies) =>
+        Ok(await mediator.Send(new GetExchangeRatesQuery(
+            (currencies ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Take(50).ToList())));
+
     [HttpGet("dashboard/summary")]
     public async Task<IActionResult> Summary() => Ok(await mediator.Send(new GetDashboardSummaryQuery()));
 

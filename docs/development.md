@@ -50,30 +50,42 @@ dotnet build src/Capitrack.Web/Capitrack.Web.csproj
 
 ## Test
 
-The test project (`tests/Capitrack.Tests`) is xUnit and references the API project directly,
-so the pure service logic is exercised without spinning up a web host. There are **17 tests**
-across three areas:
+Two xUnit projects, run with the .NET 10 SDK (or its Docker image):
 
-- **`HoldingsCalculatorTests`** — holdings math: buys increase quantity, sells reduce it,
-  fully-sold positions are filtered out, transfers in/out, weighted average cost, the
-  total-cost (buy + fee − sell) rule, and multiple symbols ordered by total cost.
-- **`WealthServiceTests`** — the FX wealth calculation: USD→EUR conversion of total wealth,
-  zero-price yielding zero wealth / negative gain, and a missing currency rate defaulting to
-  a factor of 1.
-- **`ImporterServiceTests`** — CSV format detection across all five layouts
-  (generic, revolut-stocks, revolut-commodities, trezor, unknown), generic
-  import-then-reimport de-duplication, and the Revolut dividend-as-amount rule.
-
-Run them all:
+- **`tests/Server.Tests`**: domain, import and market-data logic against an in-memory SQLite
+  database with the real EF model: exact decimal arithmetic and the schema upgrade, number and
+  time parsing, the Trezor ledger rules, import keys and idempotency, preview == import,
+  average-cost holdings, the value history and dashboard in the base currency, and every price
+  provider against recorded responses in `Fixtures/prices` (tests never call a live service).
+- **`tests/Client.Tests`**: bUnit tests of the Blazor components (Check & Import, icons,
+  loading states).
 
 ```bash
-dotnet test
+dotnet test tests/Server.Tests/Server.Tests.csproj
+dotnet test tests/Client.Tests/Client.Tests.csproj
 ```
 
-Or just the test project:
+Two server tests only run when pointed at local data that must never enter the repository:
+
+| Variable | Test |
+|----------|------|
+| `CAPITRACK_LEGACY_DB` | Upgrades a copy of a real pre-decimal database and checks no value changed. |
+| `CAPITRACK_PRICE_SAMPLES` | A JSON file of `[{symbol, utc, price}]` from real transactions; compares each provider's price at that moment (live calls). |
+
+## Verification tools
+
+- **`tools/reference/trezor_reference.py`**: computes each asset's balance and total fees from
+  Trezor Suite CSV exports in plain Python decimals, independently of Capitrack's importer.
+- **`tools/verify/verify_import.py`**: imports exports into a local Capitrack and checks the
+  result against the reference exactly, that re-imports and overlapping subsets change nothing,
+  and that the preview equals the import. It only adds accounts.
+- **`tools/perf/measure_screens.py`**: times each screen's API calls (first and warm loads).
+
+Both scripts take the user's password from `CAPITRACK_PASSWORD` and refuse a non-local URL:
 
 ```bash
-dotnet test tests/Capitrack.Tests/Capitrack.Tests.csproj
+CAPITRACK_PASSWORD=... python tools/verify/verify_import.py ~/Desktop/*_1_*.csv
+CAPITRACK_PASSWORD=... python tools/perf/measure_screens.py --label before
 ```
 
 ## Run the API standalone

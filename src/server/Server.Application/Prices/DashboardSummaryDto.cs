@@ -8,6 +8,7 @@ namespace Server.Application.Prices;
 /// <param name="BaseCurrency">The base currency the totals are expressed in.</param>
 /// <param name="Accounts">The per-account roll-ups.</param>
 /// <param name="HoldingsCount">The total number of distinct holdings.</param>
+/// <param name="TodayChange">The change in value over the current session, in the base currency.</param>
 public record DashboardSummaryDto(
-    double TotalWealth, double TotalCost, double TotalGain, double TotalGainPercent,
-    string BaseCurrency, List<AccountSummaryDto> Accounts, int HoldingsCount);
+    decimal TotalWealth, decimal TotalCost, decimal TotalGain, decimal TotalGainPercent,
+    string BaseCurrency, List<AccountSummaryDto> Accounts, int HoldingsCount, decimal TodayChange = 0);

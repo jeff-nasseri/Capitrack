@@ -12,7 +12,7 @@ namespace Server.Application.Settings;
 public record SnapshotGoal(
     int Id,
     string Title,
-    double TargetAmount,
+    decimal TargetAmount,
     string TargetDate,
     string? Description,
     bool Achieved,

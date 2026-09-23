@@ -46,10 +46,11 @@ public class TransactionTypeTests
     {
         TransactionType.Buy.CountsAsHistoryAdd.Should().BeTrue();
         TransactionType.TransferIn.CountsAsHistoryAdd.Should().BeTrue();
-        TransactionType.Dividend.CountsAsHistoryAdd.Should().BeTrue();
+        TransactionType.Dividend.CountsAsHistoryAdd.Should().BeFalse(); // a dividend is cash, not extra shares
         TransactionType.Sell.CountsAsHistorySub.Should().BeTrue();
         TransactionType.TransferOut.CountsAsHistorySub.Should().BeTrue();
         TransactionType.Fee.CountsAsHistoryAdd.Should().BeFalse();
+        TransactionType.Fee.CountsAsHistorySub.Should().BeTrue();       // a network fee spends units
     }
 
     [Fact]

@@ -8,7 +8,7 @@ namespace Server.Application.Settings;
 /// <param name="Details">A JSON detail payload for the snapshot.</param>
 public record SnapshotDailyWealth(
     string Date,
-    double Total,
-    double TotalCost,
+    decimal Total,
+    decimal TotalCost,
     string BaseCurrency,
     string Details);

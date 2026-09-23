@@ -7,7 +7,7 @@ namespace Server.Application.Currencies.Commands;
 /// <param name="FromCurrency">The new source currency, or null/empty to keep the current value.</param>
 /// <param name="ToCurrency">The new target currency, or null/empty to keep the current value.</param>
 /// <param name="Rate">The new rate, or null to keep the current value.</param>
-public record UpdateCurrencyRateCommand(int Id, string? FromCurrency, string? ToCurrency, double? Rate)
+public record UpdateCurrencyRateCommand(int Id, string? FromCurrency, string? ToCurrency, decimal? Rate)
     : IRequest<CurrencyRateDto>;
 
 /// <summary>Handles <see cref="UpdateCurrencyRateCommand"/>.</summary>

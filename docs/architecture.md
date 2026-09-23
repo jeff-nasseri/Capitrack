@@ -189,9 +189,48 @@ Two intentional exceptions:
   `{ "currentPassword": ..., "newPassword": ... }`. This is enforced with explicit
   `[JsonPropertyName]` attributes on `PasswordRequest` and matches the original API.
 
+## Market data providers
+
+Every price lookup goes through `MarketDataService` (`IMarketDataService`), which routes it to
+the providers chosen in **Settings > Market Data**: an ordered list per asset class (crypto,
+stock, metal, fx), stored in the `AppSettings` table. The first provider is asked first; when it
+fails, is not configured (missing API key), cannot price the symbol, or lacks part of a date
+range, the next one is tried. Providers only ever receive a symbol and dates.
+
+| Provider | Asset classes | Key | Free-tier limits |
+|---|---|---|---|
+| Kraken | crypto (USD/EUR pairs) | none | ~1 request/s; only the 720 most recent candles (~2 years daily) |
+| Bitvavo | crypto (prices in EUR) | none | 1,000 request-weight/min; full daily and hourly history |
+| CoinGecko | crypto (fixed id map) | optional `COINGECKO_DEMO_API_KEY` | ~9 calls/min keyless, ~30 with a Demo key; past 365 days only |
+| Twelve Data | US stocks/ETFs, forex, crypto, gold/silver | `TWELVE_DATA_API_KEY` | 800 credits/day, 8 requests/min |
+| ECB | fx (euro reference rates) | none | working days since 1999 |
+| Yahoo Finance | all | none | unofficial, no published terms; last fallback |
+
+Defaults: crypto Kraken → Bitvavo → CoinGecko → Yahoo; stocks and metals Yahoo → Twelve Data;
+fx ECB → Yahoo. Each provider has its own rate gate.
+
+- **Daily closes are cached** in `PriceHistory` (per symbol, provider and UTC day) with a
+  `PriceCoverage` record of the range already asked, so a past close is fetched once and only
+  missing days are requested later. Today's close is never cached (it is not final).
+- **Price at a moment** (`PriceAtAsync`): the hourly candle containing the instant when a
+  provider has intraday history for that date; otherwise, as a documented fallback, the close
+  of that UTC day.
+- **FX** (`FxRateAsync`): the last ECB reference rate published on or before the date.
+- **Quotes** are fetched together: each provider is asked once for all the symbols still
+  missing (Kraken's Ticker, Bitvavo's all-markets ticker, CoinGecko's simple/price, Yahoo's v7
+  quote), asset classes in parallel. `PriceService` caches quotes for 5 minutes and remembers
+  for 10 minutes that no provider could price a symbol. A crypto pair is returned in its own
+  currency (`BTC-USD` in USD, at the ECB rate) whichever provider answered.
+- **Background top-up:** `PriceCacheWarmupService` fills the daily closes and exchange rates the
+  value history needs at startup and then hourly, so charts read the cache instead of waiting
+  on providers. Cache fills are serialized per (symbol, provider).
+- **Imports without a value** (Revolut commodity exchanges; Trezor rows with an empty fiat
+  column) are priced at the market price of their time via `PriceAtAsync`, memoized so a
+  preview and its import agree.
+
 ## Yahoo Finance client
 
-`YahooFinanceClient` reimplements only the subset of Yahoo's endpoints the app needs:
+Yahoo is one provider among several (see above). `YahooFinanceClient` reimplements only the subset of Yahoo's endpoints the app needs:
 quote, chart (history), and search. It uses one `HttpClient` with a cookie container and a
 desktop browser `User-Agent`.
 
@@ -224,44 +263,47 @@ All aggregation math is centralized so it stays consistent and testable.
 
 ### Quantity and cost (`HoldingsCalculator`)
 
-For each symbol (or symbol+account):
+Positions are replayed per symbol and account in chronological order (date, then instant, then
+sends before receipts, then id), with exact decimals and the average-cost method:
 
-- **Quantity** = Σ(`buy` + `transfer_in` quantities) − Σ(`sell` + `transfer_out` quantities).
-- Holdings with quantity ≤ `1e-8` are **filtered out** (treated as fully closed).
-- **Weighted average cost** = (Σ buy/transfer_in `quantity × price`) ÷ (Σ buy/transfer_in
-  quantity).
-- **Total cost** (per-symbol holdings only) = Σ(`buy`: `quantity × price + fee`) +
-  Σ(`sell`: −(`quantity × price − fee`)); other types contribute 0. Per-symbol holdings are
-  ordered by total cost descending.
+- **buy:** + quantity; cost += `quantity × price + fee`.
+- **transfer in:** + quantity; cost += the cost carried by the matching transfer out (same source
+  transaction id and symbol) when the coins came from another of your accounts, otherwise their
+  value when received (`quantity × price + fee`).
+- **sell, transfer out, fee:** − quantity, and the cost of those units at the current average
+  cost is removed (a partial sale leaves the average unchanged). A staked transfer out keeps
+  its units.
+- **dividend / interest:** no change to units or cost.
+
+Any positive balance, however small, is a holding. The cost basis is kept in the currency the
+units were acquired in.
 
 ### Dashboard wealth (`WealthService.DashboardSummaryAsync`)
 
 Live quotes are fetched per symbol. For each holding:
 
-- **Market value** = `quantity × live price`, converted to the user's base currency using
-  the `priceCurrency → baseCurrency` entry from `currency_rates` (defaulting to a factor of
-  1 when no rate exists).
-- **Cost basis** = `quantity × avg cost`, converted from the **account's** currency to the
-  base currency the same way.
+- **Market value** = `quantity × live price`, converted to the user's base currency with the
+  manual `currency_rates` entry (or the inverse of one) when there is one, otherwise the latest
+  ECB reference rate.
+- **Cost basis** = `quantity × avg cost`, converted from the currency the units were acquired
+  in to the base currency the same way.
 - Totals roll up per account and overall; `total_gain` = wealth − cost, and
   `total_gain_percent` = gain ÷ cost × 100.
 
 ### Portfolio value history (`WealthService.PortfolioHistoryAsync`)
 
-History replays transactions over historical prices:
+History replays transactions over cached daily closes, in the base currency:
 
-1. Determine active symbols (net quantity > 0) for the account/period.
-2. Fetch each symbol's historical close series from Yahoo (interval `1d` for ≤30-day
-   windows, otherwise `1wk`); fall back to the cached spot price if history is unavailable.
-3. Walk the union of dates in chronological order, replaying transactions up to each date
-   (`buy`/`transfer_in`/`dividend` add, `sell`/`transfer_out` subtract) and valuing the
-   running holdings at the price on (or most recently before) that date.
-4. Emit `{ date, value, cost, gain }` per date, rounded to cents.
-
-> **Intentional quirk (carried over):** portfolio history performs **no FX conversion** —
-> values and costs are summed in their native currencies. This matches the original app's
-> behaviour and is preserved on purpose. (The dashboard summary, by contrast, *does* convert
-> to the base currency.)
+1. The window starts at the period start or the first transaction, whichever is later.
+   Every symbol held at some point in the window counts, including ones sold since.
+2. Each symbol's daily closes come from `MarketDataService` (cached); today's point uses the
+   latest quote, the same one the dashboard shows.
+3. Points are daily for windows up to ~3 months, weekly beyond. Transactions are replayed up
+   to each date and holdings valued at the close on (or most recently before) that date.
+4. Values and costs are converted to the base currency at that day's ECB rate (today: the
+   dashboard's rate). Cash accounts count at their balance. The cost line is the remaining
+   average cost, by the currency it was paid in.
+5. Emit `{ date, value, cost, gain }` per date, rounded to cents.
 
 ### Daily-wealth snapshot (`SaveDailyWealthAsync`)
 

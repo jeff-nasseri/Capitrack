@@ -9,4 +9,4 @@ public record SnapshotCurrencyRate(
     int Id,
     string FromCurrency,
     string ToCurrency,
-    double Rate);
+    decimal Rate);

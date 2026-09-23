@@ -1,0 +1,4 @@
+symbol,type,quantity,price,fee,currency,date,notes
+ACME,buy,1,10,0,EUR,2026-01-02,first
+ACME,buy,1,10,0,EUR,2026-01-02,second identical trade
+ACME,sell,1,12,0,EUR,2026-01-03,

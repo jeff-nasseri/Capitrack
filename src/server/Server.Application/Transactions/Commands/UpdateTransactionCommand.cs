@@ -16,8 +16,8 @@ namespace Server.Application.Transactions.Commands;
 /// <param name="IsStaked">The new staked flag, or null to keep the current value.</param>
 /// <param name="TagIds">The ids of tags to attach.</param>
 public record UpdateTransactionCommand(
-    int Id, string? Symbol, string? Type, double? Quantity, double? Price,
-    double? Fee, string? Currency, string? Date, string? Notes, bool? IsStaked, List<int>? TagIds)
+    int Id, string? Symbol, string? Type, decimal? Quantity, decimal? Price,
+    decimal? Fee, string? Currency, string? Date, string? Notes, bool? IsStaked, List<int>? TagIds)
     : IRequest<TransactionDto>;
 
 /// <summary>Handles <see cref="UpdateTransactionCommand"/>.</summary>

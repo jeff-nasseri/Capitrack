@@ -17,8 +17,8 @@ namespace Server.Application.Transactions.Commands;
 /// <param name="IsStaked">Whether this transaction represents staked crypto.</param>
 /// <param name="TagIds">The ids of tags to attach.</param>
 public record CreateTransactionCommand(
-    int? AccountId, string? Symbol, string? Type, double? Quantity, double? Price,
-    double? Fee, string? Currency, string? Date, string? Notes, bool? IsStaked, List<int>? TagIds)
+    int? AccountId, string? Symbol, string? Type, decimal? Quantity, decimal? Price,
+    decimal? Fee, string? Currency, string? Date, string? Notes, bool? IsStaked, List<int>? TagIds)
     : IRequest<TransactionDto>;
 
 /// <summary>Validates <see cref="CreateTransactionCommand"/>.</summary>

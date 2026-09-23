@@ -8,7 +8,7 @@
 
 @if (!Session.Value.Initialized)
 {
-    <div class="login-container"><div class="loading-spinner">Loading Capitrack...</div></div>
+    <div class="login-container"><LoadingState Text="Loading Capitrack…" /></div>
 }
 else if (Session.Value.User is null)
 {

@@ -4,7 +4,7 @@ namespace Client.Application.Models;
 public class QuoteDto
 {
     public string Symbol { get; set; } = "";
-    public double Price { get; set; }
+    public decimal Price { get; set; }
     public string? Currency { get; set; }
     public string? Name { get; set; }
     public double ChangePercent { get; set; }
