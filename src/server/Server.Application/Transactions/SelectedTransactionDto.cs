@@ -13,4 +13,4 @@ namespace Server.Application.Transactions;
 public record SelectedTransactionDto(
     string Symbol, string Type, decimal Quantity, decimal Price, decimal Fee,
     string Currency, string Date, string? Notes, bool IsStaked,
-    DateTime? OccurredAt = null, string? ExternalId = null);
+    DateTime? OccurredAt = null, string? ExternalId = null, string? ImportKey = null);

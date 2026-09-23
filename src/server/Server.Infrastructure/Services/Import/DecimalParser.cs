@@ -88,8 +88,8 @@ public static class DecimalParser
         var sb = new StringBuilder(raw.Length);
         foreach (var c in raw.Trim().Trim('"'))
         {
-            if (c is '−' or '–') { sb.Append('-'); continue; }                  // Unicode minus / en dash
-            if (char.IsWhiteSpace(c) || c is ' ' or ' ' or ' ' or '\'' or '’' or '﻿') continue;
+            if (c is '\u2212' or '\u2013') { sb.Append('-'); continue; }                  // Unicode minus / en dash
+            if (char.IsWhiteSpace(c) || c is '\u00A0' or '\u202F' or '\u2009' or '\'' or '\u2019' or '\uFEFF') continue;
             if (char.GetUnicodeCategory(c) == UnicodeCategory.CurrencySymbol) continue;   // $ € £ ¥ ₿ …
             sb.Append(c);
         }

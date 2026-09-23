@@ -9,7 +9,7 @@ public class ImportParsingTests
     {
         using var t = new TestDb();
         var accountId = t.AddAccount(type: "stock", currency: "EUR");
-        const string csv = "﻿symbol;type;quantity;price;fee;currency;date\r\n" +
+        const string csv = "\uFEFFsymbol;type;quantity;price;fee;currency;date\r\n" +
                            "ACME;buy;0,5;1.234,56;1,25;EUR;2026-01-02\r\n" +
                            "ACME;buy;2;10,1;0;EUR;2026-01-03\r\n";
 

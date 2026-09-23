@@ -187,7 +187,7 @@
             {
                 Symbol = r.Tx.Symbol, Type = r.Tx.Type, Quantity = r.Tx.Quantity, Price = r.Tx.Price,
                 Fee = r.Tx.Fee, Currency = r.Tx.Currency, Date = r.Tx.Date, Notes = r.Tx.Notes, IsStaked = r.Staked,
-                OccurredAt = r.Tx.OccurredAt, ExternalId = r.Tx.ExternalId
+                OccurredAt = r.Tx.OccurredAt, ExternalId = r.Tx.ExternalId, ImportKey = r.Tx.ImportKey
             }).ToList();
 
             var body = new { account_id = State.CurrentAccountId.Value, transactions = selected };

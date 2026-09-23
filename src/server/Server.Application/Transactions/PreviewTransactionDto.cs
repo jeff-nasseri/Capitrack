@@ -15,4 +15,4 @@ namespace Server.Application.Transactions;
 public record PreviewTransactionDto(
     int Index, string Symbol, string Type, decimal Quantity, decimal Price, decimal Fee,
     string Currency, string Date, string Notes, bool IsDuplicate, bool CanStake,
-    DateTime? OccurredAt = null, string? ExternalId = null);
+    DateTime? OccurredAt = null, string? ExternalId = null, string? ImportKey = null);

@@ -42,6 +42,13 @@ public sealed class Transaction : AggregateRoot<int>
     /// <summary>The source's own identifier (e.g. a blockchain transaction hash), when it has one.</summary>
     public string? ExternalId { get; private set; }
 
+    /// <summary>
+    /// The stable identity of the imported row this transaction came from, built only from the
+    /// source's immutable fields. Unique per account, so re-importing the same or an overlapping
+    /// export never creates duplicates. Null for manually entered transactions.
+    /// </summary>
+    public string? ImportKey { get; private set; }
+
     /// <summary>When the transaction record was created.</summary>
     public DateTime CreatedAt { get; private set; }
 
@@ -55,7 +62,8 @@ public sealed class Transaction : AggregateRoot<int>
     /// <summary>Creates a new transaction, requiring a valid owning account.</summary>
     public static Transaction Create(int accountId, Symbol symbol, TransactionType type, Quantity quantity,
                                      decimal price, decimal fee, CurrencyCode currency, TradeDate date, string? notes,
-                                     bool isStaked = false, DateTime? occurredAt = null, string? externalId = null)
+                                     bool isStaked = false, DateTime? occurredAt = null, string? externalId = null,
+                                     string? importKey = null)
     {
         if (accountId <= 0)
             throw new DomainException("A transaction must belong to an account.");
@@ -72,8 +80,39 @@ public sealed class Transaction : AggregateRoot<int>
             Notes = notes ?? "",
             IsStaked = isStaked,
             OccurredAt = ToUtc(occurredAt),
-            ExternalId = string.IsNullOrWhiteSpace(externalId) ? null : externalId.Trim()
+            ExternalId = string.IsNullOrWhiteSpace(externalId) ? null : externalId.Trim(),
+            ImportKey = string.IsNullOrWhiteSpace(importKey) ? null : importKey
         };
+    }
+
+    /// <summary>
+    /// Links a transaction imported before import keys existed to the row it came from, correcting
+    /// it to the row's exact values (older imports stored rounded doubles, local dates and a
+    /// blockchain fee in the monetary fee field). User choices — staking, notes, tags — are kept.
+    /// </summary>
+    public void AdoptImport(string importKey, string? externalId, DateTime? occurredAt, TradeDate date,
+                            Quantity quantity, decimal price, decimal fee)
+    {
+        ImportKey = importKey;
+        ExternalId = string.IsNullOrWhiteSpace(externalId) ? ExternalId : externalId.Trim();
+        OccurredAt = ToUtc(occurredAt) ?? OccurredAt;
+        Date = date;
+        Quantity = quantity;
+        if (price != 0) Price = price;
+        Fee = fee;
+    }
+
+    /// <summary>
+    /// Refreshes an imported transaction whose source row changed its timing — e.g. a transaction
+    /// exported while pending and again once confirmed. User choices are kept.
+    /// </summary>
+    public void RefreshImport(TradeDate date, DateTime? occurredAt, Quantity quantity, decimal price, decimal fee)
+    {
+        Date = date;
+        OccurredAt = ToUtc(occurredAt);
+        Quantity = quantity;
+        Price = price;
+        Fee = fee;
     }
 
     private static DateTime? ToUtc(DateTime? value) => value switch

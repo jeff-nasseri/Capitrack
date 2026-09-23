@@ -15,6 +15,7 @@ namespace Server.Application.Settings;
 /// <param name="IsStaked">Whether the transaction represents staked crypto (absent in older backups).</param>
 /// <param name="OccurredAt">The exact UTC instant (absent in older backups).</param>
 /// <param name="ExternalId">The source's transaction id (absent in older backups).</param>
+/// <param name="ImportKey">The import row identity used for de-duplication (absent in older backups).</param>
 public record SnapshotTransaction(
     int Id,
     int AccountId,
@@ -29,4 +30,5 @@ public record SnapshotTransaction(
     List<int> TagIds,
     bool IsStaked = false,
     DateTime? OccurredAt = null,
-    string? ExternalId = null);
+    string? ExternalId = null,
+    string? ImportKey = null);

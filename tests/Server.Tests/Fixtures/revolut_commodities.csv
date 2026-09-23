@@ -1,0 +1,4 @@
+Type,Product,Started Date,Completed Date,Description,Amount,Fee,Currency,State,Balance
+EXCHANGE,Current,2026-01-10 09:00:00,2026-01-10 09:00:01,Exchanged to XAU,0.5,0.01,XAU,COMPLETED,0.5
+EXCHANGE,Current,2026-01-11 09:00:00,2026-01-11 09:00:01,Exchanged to EUR,-0.1,0.002,XAU,COMPLETED,0.4
+EXCHANGE,Current,2026-01-12 09:00:00,,Exchanged to XAU,0.2,0.004,XAU,PENDING,

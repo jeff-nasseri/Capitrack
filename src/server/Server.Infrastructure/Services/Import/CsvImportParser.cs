@@ -16,9 +16,15 @@ namespace Server.Infrastructure.Services.Import;
 /// <param name="OccurredAt">The exact UTC instant, when known.</param>
 /// <param name="ExternalId">The source's transaction id, when it has one.</param>
 /// <param name="CanStake">Whether the user may flag this outflow as staked.</param>
+/// <param name="Key">
+/// The row's stable identity, built only from the source's immutable fields (never fiat values,
+/// labels or the position in the file), suffixed with "#n" to count genuinely identical rows.
+/// </param>
+/// <param name="LocalDate">The date in the source's local time, when it can differ from <paramref name="Date"/>.</param>
 public sealed record ImportLeg(
     string Symbol, string Type, decimal Quantity, decimal Price, decimal Fee, string Currency,
-    string Date, string Notes, DateTime? OccurredAt = null, string? ExternalId = null, bool CanStake = false);
+    string Date, string Notes, DateTime? OccurredAt = null, string? ExternalId = null, bool CanStake = false,
+    string Key = "", string? LocalDate = null);
 
 /// <summary>The outcome of one CSV data row: the legs it produces, or why it produces none.</summary>
 /// <param name="Row">The 1-based data row number within the file (for reporting only).</param>
@@ -71,8 +77,29 @@ public static class CsvImportParser
             "generic" => Generic(records),
             _ => records.Select((_, i) => ParsedRow.Rejected(i + 1, $"Unknown CSV format (headers: {string.Join(", ", headers)})")).ToList()
         };
-        return new ParsedFile(format, headers, rows);
+        return new ParsedFile(format, headers, CountIdenticalRows(rows));
     }
+
+    /// <summary>
+    /// Appends "#n" to each leg's key base, counting legs whose immutable fields are identical (e.g.
+    /// two identical trades on one day), so they are neither merged nor duplicated on re-import.
+    /// </summary>
+    private static List<ParsedRow> CountIdenticalRows(List<ParsedRow> rows)
+    {
+        var seen = new Dictionary<string, int>(StringComparer.Ordinal);
+        return rows.Select(row => row with
+        {
+            Legs = row.Legs.Select(leg =>
+            {
+                var n = seen.TryGetValue(leg.Key, out var c) ? c : 0;
+                seen[leg.Key] = n + 1;
+                return leg with { Key = $"{leg.Key}#{n}" };
+            }).ToList()
+        }).ToList();
+    }
+
+    /// <summary>A decimal without trailing zeros ("0.00100" and "0.001" are the same amount).</summary>
+    private static string Norm(decimal value) => value.ToString("0.############################", CultureInfo.InvariantCulture);
 
     /// <summary>Identifies an export by its header row.</summary>
     public static string DetectFormat(IEnumerable<string> headers)
@@ -88,7 +115,7 @@ public static class CsvImportParser
     /// <summary>Reads the CSV into header→value rows (case-insensitive headers).</summary>
     public static (List<Dictionary<string, string>> Records, List<string> Headers) ReadCsv(string content)
     {
-        content = content.TrimStart('﻿'); // a UTF-8 BOM would otherwise corrupt the first header name
+        content = content.TrimStart('\uFEFF'); // a UTF-8 BOM would otherwise corrupt the first header name
         var config = new CsvConfiguration(CultureInfo.InvariantCulture)
         {
             HasHeaderRecord = true,
@@ -162,6 +189,9 @@ public static class CsvImportParser
         }
 
         var externalId = txId.Length > 0 ? txId : null;
+        // the transaction's identity: its id, or (without one) the exact instant
+        var txKey = txId.Length > 0 ? txId : $"at:{when.Utc?.Ticks.ToString(CultureInfo.InvariantCulture) ?? when.Date}";
+        var address = Get(r, "Address");
         var fiat = DecimalParser.TryParse(Get(r, "Fiat (USD)"), sep, out var f) ? Math.Abs(f) : 0m;
         var legs = new List<ImportLeg>();
         decimal unitPrice = 0;
@@ -180,8 +210,11 @@ public static class CsvImportParser
             if (amount > 0)
             {
                 unitPrice = fiat > 0 ? Math.Round(fiat / amount, 12) : 0;
+                var direction = kind == "RECV" ? "in" : "out";
                 legs.Add(new ImportLeg(CryptoSymbol(unit), kind == "RECV" ? "transfer_in" : "transfer_out", amount, unitPrice, 0, "USD",
-                    when.Date, $"Trezor {kind}", when.Utc, externalId, CanStake: kind == "SENT"));
+                    when.Date, $"Trezor {kind}", when.Utc, externalId, CanStake: kind == "SENT",
+                    // a transaction can pay several outputs of one asset: the address + amount tell them apart
+                    Key: $"trezor|{txKey}|{direction}|{unit.ToUpperInvariant()}|{address}|{Norm(amount)}", LocalDate: when.LocalDate));
             }
         }
         else if (DecimalParser.TryParse(Get(r, "Amount"), sep, out var moved) && moved != 0 && fiat > 0)
@@ -197,7 +230,8 @@ public static class CsvImportParser
             {
                 var feePrice = feeUnit.Equals(unit, StringComparison.OrdinalIgnoreCase) ? unitPrice : 0;
                 legs.Add(new ImportLeg(CryptoSymbol(feeUnit), "fee", Math.Abs(fee), feePrice, 0, "USD",
-                    when.Date, $"Network fee (Trezor {kind})", when.Utc, externalId));
+                    when.Date, $"Network fee (Trezor {kind})", when.Utc, externalId,
+                    Key: $"trezor|{txKey}|fee|{feeUnit.ToUpperInvariant()}", LocalDate: when.LocalDate));
             }
         }
 
@@ -249,7 +283,8 @@ public static class CsvImportParser
             if (txType == "transfer_in" && quantity == 0 && total == 0) { finalQty = Num(Get(r, "Quantity"), sep); finalPrice = 0; }
             if (finalQty == 0) { rows.Add(ParsedRow.Rejected(row, $"{type} with zero quantity")); continue; }
 
-            rows.Add(new ParsedRow(row, [new ImportLeg(ticker, txType, finalQty, finalPrice, 0, currency, when.Date, $"Revolut: {type}", when.Utc)], null));
+            rows.Add(new ParsedRow(row, [new ImportLeg(ticker, txType, finalQty, finalPrice, 0, currency, when.Date, $"Revolut: {type}", when.Utc,
+                Key: $"revolut-stocks|{Get(r, "Date")}|{ticker}|{type}|{Norm(finalQty)}|{currency}")], null));
         }
         return rows;
     }
@@ -286,7 +321,8 @@ public static class CsvImportParser
             var symbol = MetalSymbols.GetValueOrDefault(currency, currency);
 
             rows.Add(new ParsedRow(row, [new ImportLeg(symbol, txType, amount, 0, fee, "EUR", when.Date,
-                $"Revolut Commodity: {description} ({currency})", when.Utc)], null));
+                $"Revolut Commodity: {description} ({currency})", when.Utc,
+                Key: $"revolut-commodities|{dateStr}|{description}|{Norm(amount)}|{currency}")], null));
         }
         return rows;
     }
@@ -313,9 +349,12 @@ public static class CsvImportParser
 
             var quantity = Num(Get(r, "quantity"), sep);
             if (quantity < 0) { rows.Add(ParsedRow.Rejected(row, "Negative quantity")); continue; }
+            var currency = Get(r, "currency") is { Length: > 0 } c ? c.ToUpperInvariant() : "EUR";
+            var id = Get(r, "id") is { Length: > 0 } i2 ? i2 : null;
             rows.Add(new ParsedRow(row, [new ImportLeg(symbol, type, quantity, Num(Get(r, "price"), sep), Num(Get(r, "fee"), sep),
-                Get(r, "currency") is { Length: > 0 } c ? c.ToUpperInvariant() : "EUR", date, Get(r, "notes"), when?.Utc,
-                Get(r, "id") is { Length: > 0 } id ? id : null)], null));
+                currency, date, Get(r, "notes"), when?.Utc, id,
+                // with an id column the id is the identity; otherwise the immutable trade fields (not price/fee/notes)
+                Key: id is not null ? $"generic|id|{id}" : $"generic|{symbol}|{type}|{date}|{Norm(quantity)}|{currency}")], null));
         }
         return rows;
     }

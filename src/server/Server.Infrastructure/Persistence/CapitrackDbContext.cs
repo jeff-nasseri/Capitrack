@@ -68,6 +68,8 @@ public class CapitrackDbContext(DbContextOptions<CapitrackDbContext> options) : 
             e.HasIndex(x => x.Symbol);
             e.HasIndex(x => x.Date);
             e.HasIndex(x => x.OccurredAt);
+            // an imported row exists at most once per account (NULL keys — manual entries — never collide)
+            e.HasIndex(x => new { x.AccountId, x.ImportKey }).IsUnique();
             e.HasOne<Account>().WithMany().HasForeignKey(x => x.AccountId).OnDelete(DeleteBehavior.Cascade);
         });
 

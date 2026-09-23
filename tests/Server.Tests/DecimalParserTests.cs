@@ -16,7 +16,7 @@ public class DecimalParserTests
     [InlineData("1.305", DecimalSeparator.Comma, "1305")]
     [InlineData("1,305", DecimalSeparator.Point, "1305")]
     [InlineData("12 345,67", DecimalSeparator.Comma, "12345.67")]
-    [InlineData("12 345,67", DecimalSeparator.Comma, "12345.67")]
+    [InlineData("12\u00A0345,67", DecimalSeparator.Comma, "12345.67")]
     [InlineData("1'234.50", DecimalSeparator.Point, "1234.50")]
     [InlineData("$1,234.56", DecimalSeparator.Point, "1234.56")]
     [InlineData("USD 150.23", DecimalSeparator.Point, "150.23")]
@@ -24,10 +24,10 @@ public class DecimalParserTests
     [InlineData("0.5 BTC", DecimalSeparator.Point, "0.5")]
     [InlineData("-0.1", DecimalSeparator.Point, "-0.1")]
     [InlineData("(12.5)", DecimalSeparator.Point, "-12.5")]
-    [InlineData("−3", DecimalSeparator.Point, "-3")]
+    [InlineData("\u22123", DecimalSeparator.Point, "-3")]
     [InlineData("1E-8", DecimalSeparator.Point, "0.00000001")]
     [InlineData("0.000000000000000001", DecimalSeparator.Point, "0.000000000000000001")]
-    [InlineData("﻿42", DecimalSeparator.Point, "42")]
+    [InlineData("\uFEFF42", DecimalSeparator.Point, "42")]
     public void Parses_locale_and_format_variants_exactly(string text, DecimalSeparator separator, string expected)
     {
         DecimalParser.TryParse(text, separator, out var value).Should().BeTrue();

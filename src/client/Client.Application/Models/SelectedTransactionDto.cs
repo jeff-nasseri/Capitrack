@@ -14,4 +14,5 @@ public class SelectedTransactionDto
     public bool IsStaked { get; set; }
     public DateTime? OccurredAt { get; set; }
     public string? ExternalId { get; set; }
+    public string? ImportKey { get; set; }
 }

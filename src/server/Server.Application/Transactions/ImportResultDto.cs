@@ -8,5 +8,6 @@ namespace Server.Application.Transactions;
 /// <param name="Format">The detected/used CSV format.</param>
 /// <param name="Rejected">The number of rows not imported (see <paramref name="Rejections"/>).</param>
 /// <param name="Rejections">Why each rejected row was not imported ("Row 7: …").</param>
+/// <param name="Updated">Already-imported transactions refreshed because their source row changed (e.g. pending → confirmed).</param>
 public record ImportResultDto(int Imported, int Skipped, int Total, List<string> Errors, string Format,
-    int Rejected = 0, List<string>? Rejections = null);
+    int Rejected = 0, List<string>? Rejections = null, int Updated = 0);
