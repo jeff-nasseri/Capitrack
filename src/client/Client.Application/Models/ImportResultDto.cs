@@ -9,4 +9,6 @@ public class ImportResultDto
     public List<string> Errors { get; set; } = [];
     public string Format { get; set; } = "";
     public string? Error { get; set; }
+    public int Rejected { get; set; }
+    public List<string> Rejections { get; set; } = [];
 }

@@ -31,7 +31,10 @@ public sealed class TransactionType : ValueObject
     /// <summary>An interest payment.</summary>
     public static readonly TransactionType Interest = new("interest");
 
-    /// <summary>A fee.</summary>
+    /// <summary>
+    /// A fee paid in units of the symbol's own asset — e.g. a blockchain network fee in BTC, or a
+    /// cash fee in a cash account. It reduces the holding by <c>Quantity</c>.
+    /// </summary>
     public static readonly TransactionType Fee = new("fee");
 
     /// <summary>All transaction types in canonical order.</summary>
@@ -50,14 +53,14 @@ public sealed class TransactionType : ValueObject
     /// <summary>buy / transfer_in — adds shares to a holding.</summary>
     public bool IncreasesQuantity => this == Buy || this == TransferIn;
 
-    /// <summary>sell / transfer_out — removes shares from a holding.</summary>
-    public bool DecreasesQuantity => this == Sell || this == TransferOut;
+    /// <summary>sell / transfer_out / fee — removes units from a holding.</summary>
+    public bool DecreasesQuantity => this == Sell || this == TransferOut || this == Fee;
 
     /// <summary>Types that add to portfolio-history quantity replay (buy, transfer_in, dividend).</summary>
     public bool CountsAsHistoryAdd => this == Buy || this == TransferIn || this == Dividend;
 
-    /// <summary>Types that subtract from portfolio-history quantity replay (sell, transfer_out).</summary>
-    public bool CountsAsHistorySub => this == Sell || this == TransferOut;
+    /// <summary>Types that subtract from portfolio-history quantity replay (sell, transfer_out, fee).</summary>
+    public bool CountsAsHistorySub => this == Sell || this == TransferOut || this == Fee;
 
     /// <inheritdoc />
     protected override IEnumerable<object?> GetEqualityComponents() { yield return Value; }

@@ -90,8 +90,9 @@ public sealed class TransactionsController(IMediator mediator) : ControllerBase
     {
         if (files is null || files.Count == 0) return BadRequest(new { error = "No files uploaded" });
 
-        int imported = 0, skipped = 0, total = 0;
+        int imported = 0, skipped = 0, total = 0, rejected = 0;
         var errors = new List<string>();
+        var rejections = new List<string>();
         foreach (var file in files)
         {
             if (file.Length == 0) continue;
@@ -101,9 +102,11 @@ public sealed class TransactionsController(IMediator mediator) : ControllerBase
             imported += r.Imported;
             skipped += r.Skipped;
             total += r.Total;
+            rejected += r.Rejected;
             if (r.Errors is { Count: > 0 }) errors.AddRange(r.Errors.Select(e => $"{file.FileName}: {e}"));
+            if (r.Rejections is { Count: > 0 }) rejections.AddRange(r.Rejections.Select(e => $"{file.FileName}: {e}"));
         }
-        return Ok(new ImportResultDto(imported, skipped, total, errors, "bulk"));
+        return Ok(new ImportResultDto(imported, skipped, total, errors, "bulk", rejected, rejections));
     }
 
     /// <summary>Parses one or more CSV files WITHOUT importing, returning each file's rows (with duplicate + stake flags) for review.</summary>

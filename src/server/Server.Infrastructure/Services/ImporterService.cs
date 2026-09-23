@@ -1,70 +1,22 @@
 using System.Globalization;
-using System.Text.RegularExpressions;
-using CsvHelper;
-using CsvHelper.Configuration;
 using Server.Domain.Transactions;
 using Server.Infrastructure.Persistence;
 using Server.Infrastructure.Services.Import;
 
 namespace Server.Infrastructure.Services;
 
-/// <summary>Port of services/importer.ts — format detection, four parsers, fingerprint dedup.</summary>
+/// <summary>
+/// CSV import: format detection and parsing are delegated to <see cref="CsvImportParser"/> (every row
+/// becomes ledger legs or a rejection with a reason); this service checks legs against the account's
+/// existing transactions and writes them.
+/// </summary>
 public sealed class ImporterService(CapitrackDbContext db) : IImporterService
 {
-    private static readonly string[] ValidTypes =
-        ["buy", "sell", "transfer_in", "transfer_out", "dividend", "interest", "fee"];
-
-    private record ImportedTransaction(string Symbol, string Type, decimal Quantity, decimal Price, decimal Fee, string Currency, string Date, string Notes,
-        DateTime? OccurredAt = null, string? ExternalId = null);
-
-    // ---- CSV parsing into header->value dictionaries (csv-parse columns:true equivalent) ----
-    private static (List<Dictionary<string, string>> Records, List<string> Headers) ParseCsv(string content)
-    {
-        content = content.TrimStart('﻿'); // a UTF-8 BOM would otherwise corrupt the first header name
-        var config = new CsvConfiguration(CultureInfo.InvariantCulture)
-        {
-            HasHeaderRecord = true,
-            DetectDelimiter = true, // European exports often use ';' (their decimal separator is ',')
-            DetectDelimiterValues = [",", ";", "	", "|"],
-            TrimOptions = TrimOptions.Trim,
-            MissingFieldFound = null,
-            BadDataFound = null,
-            HeaderValidated = null,
-            IgnoreBlankLines = true,
-            DetectColumnCountChanges = false
-        };
-        using var reader = new StringReader(content);
-        using var csv = new CsvReader(reader, config);
-        var records = new List<Dictionary<string, string>>();
-        if (!csv.Read()) return (records, []);
-        csv.ReadHeader();
-        var headers = (csv.HeaderRecord ?? []).Select(h => h.Trim()).ToList();
-        while (csv.Read())
-        {
-            var dict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            for (var i = 0; i < headers.Count; i++)
-                dict[headers[i]] = (csv.TryGetField<string>(i, out var val) ? val : "")?.Trim() ?? "";
-            records.Add(dict);
-        }
-        return (records, headers);
-    }
-
-    // ---- Format detection ----
-    private static string DetectFormat(IEnumerable<string> headers)
-    {
-        var h = headers.Select(s => s.ToLowerInvariant().Trim()).ToHashSet();
-        if (h.Contains("ticker") && h.Contains("price per share")) return "revolut-stocks";
-        if (h.Contains("product") && h.Contains("started date") && h.Contains("state")) return "revolut-commodities";
-        if (h.Contains("transaction id") && h.Contains("amount unit")) return "trezor";
-        if (h.Contains("symbol") && h.Contains("type")) return "generic";
-        return "unknown";
-    }
-
     public DetectResultDto Detect(string content)
     {
-        var (records, headers) = ParseCsv(content);
+        var (records, headers) = CsvImportParser.ReadCsv(content);
         if (records.Count == 0) return new DetectResultDto("unknown", []);
-        return new DetectResultDto(DetectFormat(headers), headers);
+        return new DetectResultDto(CsvImportParser.DetectFormat(headers), headers);
     }
 
     // ---- Fingerprint / dedup ----
@@ -82,89 +34,58 @@ public sealed class ImporterService(CapitrackDbContext db) : IImporterService
         return set;
     }
 
-    private static readonly string[] KnownFormats = ["revolut-stocks", "revolut-commodities", "trezor", "generic"];
-
-    // ---- Shared parse (format detection + parser dispatch) ----
-    private static (string Format, List<ImportedTransaction> Parsed, List<string> Headers) ParseContent(string content, string? formatHint)
-    {
-        var (records, headers) = ParseCsv(content);
-        if (records.Count == 0) return ("unknown", [], headers);
-
-        var format = !string.IsNullOrEmpty(formatHint) ? formatHint : DetectFormat(headers);
-        List<ImportedTransaction> parsed = format switch
-        {
-            "revolut-stocks" => ParseRevolutStock(records),
-            "revolut-commodities" => ParseRevolutCommodity(records),
-            "trezor" => ParseTrezor(records),
-            "generic" => ParseGeneric(records),
-            _ => []
-        };
-        return (format, parsed, headers);
-    }
-
     // ---- Main import ----
     public async Task<ImportResultDto> ImportAsync(string content, int accountId, string? formatHint)
     {
-        var (records, _) = ParseCsv(content);
-        if (records.Count == 0) return new ImportResultDto(0, 0, 0, [], "unknown");
-
-        var (format, parsed, headers) = ParseContent(content, formatHint);
-        if (!KnownFormats.Contains(format))
-            return new ImportResultDto(0, 0, records.Count, [$"Unknown CSV format. Headers: {string.Join(", ", headers)}"], "unknown");
+        var file = CsvImportParser.Parse(content, formatHint);
+        if (file.Rows.Count == 0) return new ImportResultDto(0, 0, 0, [], file.Format);
+        if (!CsvImportParser.KnownFormats.Contains(file.Format))
+            return new ImportResultDto(0, 0, file.Rows.Count, [$"Unknown CSV format. Headers: {string.Join(", ", file.Headers)}"], "unknown");
 
         var existing = await ExistingFingerprintsAsync(accountId);
         int imported = 0, skipped = 0;
         var errors = new List<string>();
-        for (var i = 0; i < parsed.Count; i++)
+        foreach (var row in file.Rows.Where(r => !r.IsRejected))
         {
-            var tx = parsed[i];
-            try
+            foreach (var leg in row.Legs)
             {
-                var fp = Fingerprint(accountId, tx.Symbol, tx.Type, tx.Quantity, tx.Price, tx.Date);
-                if (existing.Contains(fp)) { skipped++; continue; }
-                db.Transactions.Add(Transaction.Create(
-                    accountId,
-                    Symbol.Create(tx.Symbol),
-                    TransactionType.From(tx.Type),
-                    Quantity.Create(tx.Quantity),
-                    tx.Price,
-                    tx.Fee,
-                    CurrencyCode.Create(tx.Currency),
-                    TradeDate.Create(tx.Date),
-                    tx.Notes,
-                    occurredAt: tx.OccurredAt,
-                    externalId: tx.ExternalId));
-                existing.Add(fp);
-                imported++;
+                try
+                {
+                    var fp = Fingerprint(accountId, leg.Symbol, leg.Type, leg.Quantity, leg.Price, leg.Date);
+                    if (existing.Contains(fp)) { skipped++; continue; }
+                    db.Transactions.Add(ToTransaction(accountId, leg, isStaked: false));
+                    existing.Add(fp);
+                    imported++;
+                }
+                catch (Exception e) { errors.Add($"Row {row.Row}: {e.Message}"); }
             }
-            catch (Exception e) { errors.Add($"Row {i + 1}: {e.Message}"); }
         }
         await db.SaveChangesAsync();
-        return new ImportResultDto(imported, skipped, parsed.Count, errors, format);
+        var rejections = file.Rows.Where(r => r.IsRejected).Select(r => $"Row {r.Row}: {r.Rejection}").ToList();
+        return new ImportResultDto(imported, skipped, file.Rows.Count, errors, file.Format, rejections.Count, rejections);
     }
 
     // ---- Preview (parse only, no insert) ----
     public async Task<PreviewFileDto> PreviewAsync(string fileName, string content, int accountId)
     {
-        var (format, parsed, _) = ParseContent(content, null);
+        var file = CsvImportParser.Parse(content);
         var existing = await ExistingFingerprintsAsync(accountId);
 
         var account = await db.Accounts.FindAsync(accountId);
-        bool accountIsCrypto = account?.Type.Value is "crypto";
+        var accountIsCrypto = account?.Type.Value is "crypto";
 
-        var rows = new List<PreviewTransactionDto>(parsed.Count);
-        for (var i = 0; i < parsed.Count; i++)
-        {
-            var tx = parsed[i];
-            var fp = Fingerprint(accountId, tx.Symbol, tx.Type, tx.Quantity, tx.Price, tx.Date);
-            bool symbolIsCrypto = tx.Symbol.EndsWith("-USD", StringComparison.OrdinalIgnoreCase);
-            bool canStake = tx.Type == "transfer_out" && (symbolIsCrypto || accountIsCrypto);
-
-            rows.Add(new PreviewTransactionDto(
-                i, tx.Symbol, tx.Type, tx.Quantity, tx.Price, tx.Fee,
-                tx.Currency, tx.Date, tx.Notes, existing.Contains(fp), canStake, tx.OccurredAt, tx.ExternalId));
-        }
-        return new PreviewFileDto(fileName, format, rows);
+        var legs = new List<PreviewTransactionDto>();
+        foreach (var row in file.Rows.Where(r => !r.IsRejected))
+            foreach (var leg in row.Legs)
+            {
+                var fp = Fingerprint(accountId, leg.Symbol, leg.Type, leg.Quantity, leg.Price, leg.Date);
+                var canStake = leg.Type == "transfer_out" && (leg.CanStake || accountIsCrypto);
+                legs.Add(new PreviewTransactionDto(
+                    legs.Count, leg.Symbol, leg.Type, leg.Quantity, leg.Price, leg.Fee,
+                    leg.Currency, leg.Date, leg.Notes, existing.Contains(fp), canStake, leg.OccurredAt, leg.ExternalId));
+            }
+        var rejected = file.Rows.Where(r => r.IsRejected).Select(r => new RejectedRowDto(r.Row, r.Rejection!)).ToList();
+        return new PreviewFileDto(fileName, file.Format, legs, rejected);
     }
 
     // ---- Import a user-selected set (no CSV parsing) ----
@@ -181,19 +102,9 @@ public sealed class ImporterService(CapitrackDbContext db) : IImporterService
             {
                 var fp = Fingerprint(accountId, tx.Symbol, tx.Type, tx.Quantity, tx.Price, tx.Date);
                 if (existing.Contains(fp)) { skipped++; continue; }
-                db.Transactions.Add(Transaction.Create(
-                    accountId,
-                    Symbol.Create(tx.Symbol),
-                    TransactionType.From(tx.Type),
-                    Quantity.Create(tx.Quantity),
-                    tx.Price,
-                    tx.Fee,
-                    CurrencyCode.Create(tx.Currency),
-                    TradeDate.Create(tx.Date),
-                    tx.Notes,
-                    isStaked: tx.IsStaked,
-                    occurredAt: tx.OccurredAt,
-                    externalId: tx.ExternalId));
+                db.Transactions.Add(ToTransaction(accountId,
+                    new ImportLeg(tx.Symbol, tx.Type, tx.Quantity, tx.Price, tx.Fee, tx.Currency, tx.Date, tx.Notes ?? "", tx.OccurredAt, tx.ExternalId),
+                    tx.IsStaked));
                 existing.Add(fp);
                 imported++;
             }
@@ -203,142 +114,18 @@ public sealed class ImporterService(CapitrackDbContext db) : IImporterService
         return new ImportResultDto(imported, skipped, list.Count, errors, "selected");
     }
 
-    // ---- Parsers ----
-    private static List<ImportedTransaction> ParseRevolutStock(List<Dictionary<string, string>> records)
-    {
-        var sep = Separator(records, "Quantity", "Price per share", "Total Amount", "FX Rate");
-        var list = new List<ImportedTransaction>();
-        foreach (var r in records)
-        {
-            var type = Get(r, "Type").Trim();
-            var ticker = Get(r, "Ticker").Trim();
-            if (string.IsNullOrEmpty(ticker) || type is "CASH TOP-UP" or "CASH WITHDRAWAL") continue;
-
-            string txType = type switch
-            {
-                "BUY - MARKET" => "buy",
-                "SELL - MARKET" => "sell",
-                "DIVIDEND" => "dividend",
-                "STOCK SPLIT" => "transfer_in",
-                _ => ""
-            };
-            if (txType == "") continue;
-
-            decimal quantity = Math.Abs(Num(Get(r, "Quantity", "0"), sep));
-            decimal price = Num(Get(r, "Price per share", "0"), sep);
-            decimal total = Math.Abs(Num(Get(r, "Total Amount", "0"), sep));
-            var currency = Get(r, "Currency", "USD").Trim();
-            var when = ImportTimeParser.Iso(Get(r, "Date"));
-            var date = when?.Date ?? "";
-
-            decimal finalQty = quantity, finalPrice = price;
-            if (txType == "dividend") { finalQty = total; finalPrice = 1; }
-            if (txType == "transfer_in" && quantity == 0 && total == 0) { finalQty = Num(Get(r, "Quantity", "0"), sep); finalPrice = 0; }
-            if (string.IsNullOrEmpty(date)) continue;
-
-            list.Add(new ImportedTransaction(ticker.ToUpperInvariant(), txType, finalQty, finalPrice, 0, currency, date, $"Revolut: {type}", when?.Utc));
-        }
-        return list;
-    }
-
-    private static List<ImportedTransaction> ParseRevolutCommodity(List<Dictionary<string, string>> records)
-    {
-        var sep = Separator(records, "Amount", "Fee", "Balance");
-        var list = new List<ImportedTransaction>();
-        var symbolMap = new Dictionary<string, string> { ["XAU"] = "GC=F", ["XAG"] = "SI=F", ["XPT"] = "PL=F", ["XPD"] = "PA=F" };
-        foreach (var r in records)
-        {
-            if (Get(r, "State").Trim() != "COMPLETED") continue;
-            var description = Get(r, "Description").Trim();
-            decimal amount = Num(Get(r, "Amount", "0"), sep);
-            decimal fee = Math.Abs(Num(Get(r, "Fee", "0"), sep));
-            var currency = Get(r, "Currency", "XAU").Trim();
-            var dateStr = Get(r, "Started Date", Get(r, "Completed Date")).Trim();
-            var when = ImportTimeParser.Iso(dateStr); // Revolut gives no zone: taken as UTC
-            var date = when?.Date ?? (string.IsNullOrEmpty(dateStr) ? "" : dateStr.Split(' ')[0]);
-            if (string.IsNullOrEmpty(date)) continue;
-
-            var symbol = symbolMap.GetValueOrDefault(currency, currency);
-            string txType;
-            if (description.Contains("Exchanged to EUR") || description.Contains("Exchanged to USD")) txType = "sell";
-            else if (description.StartsWith("Exchanged to")) txType = "buy";
-            else continue;
-
-            list.Add(new ImportedTransaction(symbol, txType, Math.Abs(amount), 0, fee, "EUR", date, $"Revolut Commodity: {description} ({currency})", when?.Utc));
-        }
-        return list;
-    }
-
-    private static List<ImportedTransaction> ParseTrezor(List<Dictionary<string, string>> records)
-    {
-        var sep = Separator(records, "Amount", "Fee", "Fiat (USD)");
-        var list = new List<ImportedTransaction>();
-        var symbolMap = new Dictionary<string, string> { ["BTC"] = "BTC-USD", ["ETH"] = "ETH-USD", ["LTC"] = "LTC-USD" };
-        foreach (var r in records)
-        {
-            var type = Get(r, "Type").Trim().ToUpperInvariant();
-            decimal amount = Math.Abs(Num(Get(r, "Amount", "0"), sep));
-            var amountUnit = Get(r, "Amount unit", "BTC").Trim();
-            decimal fiatUsd = Math.Abs(Num(Get(r, "Fiat (USD)", "0"), sep));
-            decimal fee = Math.Abs(Num(Get(r, "Fee", "0"), sep));
-            var txId = Get(r, "Transaction ID").Trim();
-            var when = ImportTimeParser.Trezor(Get(r, "Timestamp"), Get(r, "Date"), Get(r, "Time"));
-            var date = when?.Date ?? "";
-            if (string.IsNullOrEmpty(date) || amount == 0) continue;
-
-            var symbol = symbolMap.GetValueOrDefault(amountUnit, $"{amountUnit}-USD");
-            string txType = type switch { "RECV" => "transfer_in", "SENT" => "transfer_out", _ => "" };
-            if (txType == "") continue;
-
-            decimal price = amount > 0 ? fiatUsd / amount : 0;
-            var notes = !string.IsNullOrEmpty(txId) ? $"TxID: {txId[..Math.Min(16, txId.Length)]}..." : $"Trezor {amountUnit}";
-            list.Add(new ImportedTransaction(symbol, txType, amount, price, fee, "USD", date, notes, when?.Utc, string.IsNullOrEmpty(txId) ? null : txId));
-        }
-        return list;
-    }
-
-    private static List<ImportedTransaction> ParseGeneric(List<Dictionary<string, string>> records)
-    {
-        var sep = Separator(records, "quantity", "price", "fee");
-        var list = new List<ImportedTransaction>();
-        foreach (var r in records)
-        {
-            var symbol = Pick(r, "symbol", "Symbol", "SYMBOL").ToUpperInvariant();
-            var type = Or(Pick(r, "type", "Type", "TYPE"), "buy").ToLowerInvariant();
-            decimal quantity = Num(Or(Pick(r, "quantity"), "0"), sep);
-            decimal price = Num(Or(Pick(r, "price"), "0"), sep);
-            decimal fee = Num(Or(Pick(r, "fee"), "0"), sep);
-            var currency = Or(Pick(r, "currency", "Currency", "CURRENCY"), "EUR");
-            var rawDate = Pick(r, "date");
-            var when = ImportTimeParser.Iso(rawDate);
-            var date = when?.Date ?? rawDate;
-            var notes = Pick(r, "notes", "Notes", "NOTES");
-            if (string.IsNullOrEmpty(symbol) || string.IsNullOrEmpty(date)) continue;
-            if (!ValidTypes.Contains(type)) continue;
-            list.Add(new ImportedTransaction(symbol, type, quantity, price, fee, currency, date, notes, when?.Utc));
-        }
-        return list;
-    }
-
-    // ---- Helpers ----
-    private static string Get(Dictionary<string, string> r, string key, string fallback = "") =>
-        r.TryGetValue(key, out var v) && !string.IsNullOrEmpty(v) ? v : fallback;
-
-    // First non-empty value among the given keys (or "").
-    private static string Pick(Dictionary<string, string> r, params string[] keys)
-    {
-        foreach (var k in keys)
-            if (r.TryGetValue(k, out var v) && !string.IsNullOrEmpty(v)) return v;
-        return "";
-    }
-
-    private static string Or(string value, string fallback) => string.IsNullOrEmpty(value) ? fallback : value;
-
-    private static decimal Num(string s, DecimalSeparator sep) => DecimalParser.TryParse(s, sep, out var d) ? d : 0;
-
-    /// <summary>The file's decimal separator, inferred once from all values of its numeric columns.</summary>
-    private static DecimalSeparator Separator(List<Dictionary<string, string>> records, params string[] columns) =>
-        DecimalParser.Detect(records.SelectMany(r => columns.Select(c => r.TryGetValue(c, out var v) ? v : null)));
-
-
+    private static Transaction ToTransaction(int accountId, ImportLeg leg, bool isStaked) =>
+        Transaction.Create(
+            accountId,
+            Symbol.Create(leg.Symbol),
+            TransactionType.From(leg.Type),
+            Quantity.Create(leg.Quantity),
+            leg.Price,
+            leg.Fee,
+            CurrencyCode.Create(leg.Currency),
+            TradeDate.Create(leg.Date),
+            leg.Notes,
+            isStaked: isStaked && leg.Type == "transfer_out",
+            occurredAt: leg.OccurredAt,
+            externalId: leg.ExternalId);
 }
