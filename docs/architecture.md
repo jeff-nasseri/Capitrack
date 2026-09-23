@@ -216,6 +216,17 @@ fx ECB → Yahoo. Each provider has its own rate gate.
   provider has intraday history for that date; otherwise, as a documented fallback, the close
   of that UTC day.
 - **FX** (`FxRateAsync`): the last ECB reference rate published on or before the date.
+- **Quotes** are fetched together: each provider is asked once for all the symbols still
+  missing (Kraken's Ticker, Bitvavo's all-markets ticker, CoinGecko's simple/price, Yahoo's v7
+  quote), asset classes in parallel. `PriceService` caches quotes for 5 minutes and remembers
+  for 10 minutes that no provider could price a symbol. A crypto pair is returned in its own
+  currency (`BTC-USD` in USD, at the ECB rate) whichever provider answered.
+- **Background top-up:** `PriceCacheWarmupService` fills the daily closes and exchange rates the
+  value history needs at startup and then hourly, so charts read the cache instead of waiting
+  on providers. Cache fills are serialized per (symbol, provider).
+- **Imports without a value** (Revolut commodity exchanges; Trezor rows with an empty fiat
+  column) are priced at the market price of their time via `PriceAtAsync`, memoized so a
+  preview and its import agree.
 
 ## Yahoo Finance client
 

@@ -2,8 +2,9 @@
 
 Capitrack can import transactions from CSV files exported by common brokers/wallets, plus a
 generic format. Import is available from an account's toolbar (the **Import** button → import
-modal) and via the API. The implementation lives in
-`src/Capitrack.Api/Services/ImporterService.cs`.
+modal) and via the API. Parsing lives in
+`src/server/Server.Infrastructure/Services/Import/CsvImportParser.cs` (pure: rows → ledger legs or
+rejections); planning and writing in `src/server/Server.Infrastructure/Services/ImporterService.cs`.
 
 Four formats are supported:
 
@@ -29,33 +30,46 @@ The modal shows the detected format as a badge. On import (`POST
 /api/transactions/import/csv`) the same detection runs unless you pass an explicit `format`.
 If the format is `unknown`, nothing is imported and the result lists the headers it saw.
 
-CSV parsing trims fields, ignores blank lines, and tolerates ragged rows (missing/extra
-fields don't abort the import).
+CSV parsing trims fields, ignores blank lines, strips a UTF-8 BOM, detects `,` or `;` as the
+delimiter, and tolerates ragged rows. Numbers are exact decimals: a decimal comma (`0,5`),
+thousands separators (`1,284.75`, `1.234,56`), currency signs and codes, and exponents are read
+by `DecimalParser`, which detects each file's decimal separator. A value that is not a number
+rejects its row with a reason instead of silently becoming 0.
 
-## How de-duplication works
+Every data row is accounted for: it becomes one or more transactions ("legs"), or it is
+**rejected with a reason** (e.g. an NFT amount, an unsupported type, an uncompleted Revolut exchange).
+Nothing is dropped silently.
 
-Every parsed row is reduced to a **fingerprint** and compared against the fingerprints of
-transactions **already in the target account** (and against rows seen earlier in the same
-file). Matching rows are **skipped**, not inserted.
+## How re-imports stay idempotent
 
-The fingerprint is:
+Every leg gets an **import key** built only from the source's immutable fields: never fiat
+values, labels or the row's position in the file. The key is stored with the transaction, and
+the database holds `(account, import key)` unique, so importing the same file twice, or files
+that overlap, never duplicates anything:
 
-```
-{account_id}|{symbol}|{type}|{quantity:F8}|{price:F4}|{date}
-```
+| Format | Key |
+|--------|-----|
+| `trezor` | `trezor|{tx id}|{in or out}|{unit}|{address}|{amount}`; network fee: `trezor|{tx id}|fee|{fee unit}` |
+| `revolut-stocks` | `revolut-stocks|{date}|{ticker}|{type}|{quantity}|{currency}` |
+| `revolut-commodities` | `revolut-commodities|{started date}|{description}|{amount}|{metal}` |
+| `generic` | `generic|id|{id}` when the file has an `id` column, else `generic|{symbol}|{type}|{date}|{quantity}|{currency}` |
 
-where `date` is the date part only (anything after a `T` or space is dropped). This means
-re-importing the same export is safe and idempotent: quantities are compared to 8 decimals,
-prices to 4, and only the calendar date matters.
+Genuinely identical rows (two equal receipts on one day) get `#0`, `#1`, … suffixes, so each is
+imported once and counted on re-import. A row whose timing changed (a Trezor transfer that was
+pending and is now confirmed) is **updated** in place. Transactions imported before keys existed
+are **adopted**: matched by symbol, type, quantity and date, and given their key.
 
-The import result reports counts:
+An import is one database transaction: all of it is written, or none of it.
 
-```json
-{ "imported": 8, "skipped": 2, "total": 10, "errors": [], "format": "revolut-stocks" }
-```
+## Check & Import (preview)
 
-`total` is the number of parsed (mappable) rows; rows that a parser skips entirely (wrong
-state, unsupported type, missing date, etc.) never reach this count.
+`POST /api/transactions/import/preview` runs the very same plan as the import and writes
+nothing. Per file it reports every row with its status (**new**, **duplicate**, **update**,
+**rejected** with the reason), and a reconciliation: rows read = new + duplicates + rejected
+(+ rows you left unselected), counts by type, and per asset the amounts received, sent and paid
+in fees, the current balance and the balance after the import. `POST
+/api/transactions/import/selected` imports the rows you kept (re-reading the files on the
+server), so what was previewed is exactly what gets imported.
 
 ## Transaction types and symbol mapping
 
@@ -135,10 +149,12 @@ Commodities,2024-02-20 08:00:00,,Exchanged to XAG,10,0.02,XAG,PENDING
   - contains `Exchanged to EUR` or `Exchanged to USD` → **`sell`** (metal sold for fiat)
   - otherwise starts with `Exchanged to` → **`buy`** (fiat exchanged into metal)
   - anything else → skipped
-- `quantity` = `Amount` (abs); `price` = `0` (this is an amount-style record); `fee` = `Fee`
-  (abs); currency is recorded as `EUR`.
-- Date = the date part of `Started Date` (falling back to `Completed Date`); rows without a
-  date are skipped.
+- `quantity` = `Amount` (abs); currency `EUR`. The statement gives no value, so `price` is the
+  **market price at the exchange's time** (the hourly candle, else that UTC day's close,
+  converted to EUR at the ECB rate) and the `Fee`, stated in metal units, is valued at that
+  price. The note says which price was used. A row no provider can price keeps price `0`.
+- Date = `Started Date` (falling back to `Completed Date`), read as UTC; rows that are not
+  `COMPLETED` or have no date are rejected with a reason.
 - Notes are set to `Revolut Commodity: <description> (<metal code>)`.
 
 So `Exchanged to XAU, Amount 1.5` becomes a `buy` of `1.5` `GC=F`, and `Exchanged to EUR,
@@ -150,35 +166,37 @@ Amount 0.5` becomes a `sell` of `0.5` `GC=F`.
 
 Trezor Suite transaction export (crypto).
 
-**Recognized headers:** must include `Transaction ID` and `Amount unit`. The parser also
-reads `Type`, `Amount`, `Fiat (USD)`, `Fee`, and `Date`.
+**Recognized headers:** must include `Transaction ID` and `Amount unit`. The parser reads
+`Timestamp`, `Date`, `Time`, `Type`, `Transaction ID`, `Fee`, `Fee unit`, `Address`, `Amount`,
+`Amount unit` and `Fiat (USD)`.
 
-**Example:**
+**Rows → ledger legs.** A Trezor export can list one transaction on several rows (one per
+output or token). Each row becomes legs:
 
-```csv
-Transaction ID,Date,Type,Amount,Amount unit,Fiat (USD),Fee
-a1b2c3d4e5f6a7b8c9,1/15/2024,RECV,0.05,BTC,2150.00,0.00010
-f6e5d4c3b2a1f0e9d8,3/02/2024,SENT,0.02,BTC,1300.00,0.00008
-00aa11bb22cc33dd44,2/10/2024,RECV,1.5,ETH,4200.00,0.0021
-```
+| Source `Type` | Legs |
+|---------------|------|
+| `RECV` | `transfer_in` of `Amount` in `Amount unit` |
+| `SENT` | `transfer_out` of `Amount`, plus the network fee |
+| `SELF`, `FAILED`, `CONTRACT` | only the network fee (nothing left the wallet except the fee) |
+| `JOINT` (coinjoin), other | rejected with a reason |
 
-**Row → transaction mapping:**
-
-| Source `Type` | Mapped type |
-|---------------|-------------|
-| `RECV` | `transfer_in` |
-| `SENT` | `transfer_out` |
-| other | skipped |
-
-Details:
-- Symbol = `Amount unit` mapped to a Yahoo crypto symbol (`BTC→BTC-USD`, `ETH→ETH-USD`,
-  `LTC→LTC-USD`); any other unit becomes `<unit>-USD`.
-- `quantity` = `Amount` (abs); `price` = `Fiat (USD) / Amount` (a derived per-unit USD
-  price), so quantity × price ≈ the USD value of the transfer; `fee` = `Fee` (abs); currency
-  is `USD`.
-- `Date` is `M/D/YYYY` and is normalized to `YYYY-MM-DD`. Rows with no date or a zero amount
-  are skipped.
-- Notes are `TxID: <first 16 chars>...` (or `Trezor <unit>` when no transaction id).
+- **Fees:** a `fee` leg in `Fee unit` (the native coin, even for a token transfer), charged once
+  per transaction and fee unit, and only when this wallet sent the transaction. A fee leg
+  reduces the holding like a sale at average cost.
+- **Account-model chains** (ETH, BNB, POL, SOL, XRP, TRX, …): a transaction debits its native
+  coin once; a second native `SENT` row of the same transaction is the contract's internal
+  onward transfer and is rejected with that reason. UTXO chains (BTC, LTC, DOGE, BCH, ADA, …)
+  count every output.
+- **Amounts** that are not numbers (e.g. `ID 0` for an NFT) are rejected with a reason.
+- **Time:** the `Timestamp` column (Unix, UTC) is authoritative; `Date` + `Time` (local, with
+  their `GMT+n` offset) are the fallback. Transactions keep their exact UTC instant.
+- **Price:** `Fiat (USD) / Amount`. Trezor's fiat values are transaction-time values, not
+  export-time values (recent rows match CoinGecko's 5-minute price, older ones Trezor's daily
+  rate). An empty fiat column is priced from the market like commodities. An explicit `0`
+  (an amount worth less than a cent) stays 0.
+- Symbol = `Amount unit` as a USD pair (`BTC→BTC-USD`).
+- Transfers between your own wallets (the same transaction id and asset on both sides) carry
+  their cost basis instead of counting as a sale and a purchase.
 
 ---
 
@@ -214,14 +232,14 @@ VWRL,dividend,0,0,0,EUR,2024-03-01,Q1 dividend
 
 ## Tips
 
-- **Re-importing is safe.** Because of fingerprint de-dup, importing the same export twice
-  adds nothing the second time (everything is counted as skipped).
+- **Re-importing is safe.** Import keys make importing the same or overlapping exports add
+  nothing the second time (everything is reported as a duplicate).
 - **Force a format** by passing `format` to `POST /api/transactions/import/csv` if
   auto-detection picks the wrong one (e.g. a generic file whose headers happen to look like
   another format).
-- **Prices for transfers/dividends.** Transfers (Trezor) get a derived price from the fiat
-  value; dividends are stored as a cash amount with price `1`. Keep this in mind when reading
-  the resulting cost-basis numbers.
+- **Prices for transfers/dividends.** A transfer received from outside Capitrack enters the
+  cost basis at its value when received (the fiat value, or the market price when the source has
+  none); dividends are stored as a cash amount with price `1`.
 - The read-only `./transactions` folder mounted into the API container (see
   [deployment.md](deployment.md)) is a convenient place to stage CSV files for manual import;
   Capitrack does not auto-import from it.
