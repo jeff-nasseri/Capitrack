@@ -29,7 +29,7 @@
                 }
                 <div class="flex gap-2 mt-2">
                     <button class="btn btn-pri" style="flex:1;" @onclick="DoImport" disabled="@(_files.Count == 0 || _busy)">
-                        <Icon Name="upload" /> @(_busy ? "Importing…" : "Import all")
+                        <Icon Name="download" /> @(_busy ? "Importing…" : "Import all")
                     </button>
                     <button class="btn btn-ghost" style="flex:1;" @onclick="DoCheckImport" disabled="@(_files.Count == 0 || _busy)">
                         <Icon Name="filter" /> Check &amp; Import

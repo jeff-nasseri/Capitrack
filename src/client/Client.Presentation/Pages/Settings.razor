@@ -130,7 +130,7 @@
                     <p class="sub" style="margin-bottom:14px;">Export a full JSON snapshot of your data (accounts, transactions, tags, goals, currency rates and daily wealth), or restore from a previous export.</p>
 
                     <SettingsRow Title="Export data" Sub="Download everything as a single JSON backup file.">
-                        <button class="btn btn-pri btn-sm" @onclick="ExportData"><Icon Name="download" /> Export JSON</button>
+                        <button class="btn btn-pri btn-sm" @onclick="ExportData"><Icon Name="upload" /> Export JSON</button>
                     </SettingsRow>
 
                     <div class="mt-4" style="border:1px solid var(--down);background:var(--down-soft);border-radius:var(--r-sm);padding:15px 16px;">
@@ -144,7 +144,7 @@
                             <p class="sub" style="margin-bottom:10px;"><Icon Name="info" Width="13" Height="13" /> Selected: <strong style="color:var(--text-2);">@_backupFile.Name</strong></p>
                         }
                         <button class="btn btn-danger btn-sm" @onclick="ImportData" disabled="@(_backupFile is null || _importBusy)">
-                            <Icon Name="upload" /> @(_importBusy ? "Replacing…" : "Import & replace all data")
+                            <Icon Name="download" /> @(_importBusy ? "Replacing…" : "Import & replace all data")
                         </button>
                     </div>
                 </SettingsPanel>

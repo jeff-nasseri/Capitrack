@@ -130,8 +130,8 @@
     private readonly CashFormModel _cash = new();
 
     private RenderFragment Actions => @<text>
-        <button class="btn-icon" title="Import" @onclick="() => Modal.ShowImport()"><Icon Name="upload" /></button>
-        <button class="btn-icon" title="Export" @onclick="Export"><Icon Name="download" /></button>
+        <button class="btn-icon" title="Import" @onclick="() => Modal.ShowImport()"><Icon Name="download" /></button>
+        <button class="btn-icon" title="Export" @onclick="Export"><Icon Name="upload" /></button>
         @if (IsCash)
         {
             <button class="btn btn-pri btn-sm" @onclick="ShowAddCash"><Icon Name="plus" /> Add cash</button>
