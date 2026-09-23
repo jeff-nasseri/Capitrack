@@ -14,4 +14,5 @@ namespace Server.Application.Transactions;
 /// <param name="CanStake">True when the row may be flagged as staked (an outgoing crypto transfer).</param>
 public record PreviewTransactionDto(
     int Index, string Symbol, string Type, decimal Quantity, decimal Price, decimal Fee,
-    string Currency, string Date, string Notes, bool IsDuplicate, bool CanStake);
+    string Currency, string Date, string Notes, bool IsDuplicate, bool CanStake,
+    DateTime? OccurredAt = null, string? ExternalId = null);

@@ -60,10 +60,14 @@ public class CapitrackDbContext(DbContextOptions<CapitrackDbContext> options) : 
             e.Property(x => x.Currency).HasConversion(v => v.Value, v => CurrencyCode.Create(v));
             e.Property(x => x.Date).HasConversion(v => v.Value, v => TradeDate.Create(v));
             e.Property(x => x.IsStaked).HasDefaultValue(false);
+            // SQLite returns DateTime with Kind=Unspecified; OccurredAt is always UTC
+            e.Property(x => x.OccurredAt).HasConversion(
+                v => v, v => v == null ? null : DateTime.SpecifyKind(v.Value, DateTimeKind.Utc));
             e.Property(x => x.CreatedAt).HasDefaultValueSql("CURRENT_TIMESTAMP").ValueGeneratedOnAdd();
             e.HasIndex(x => x.AccountId);
             e.HasIndex(x => x.Symbol);
             e.HasIndex(x => x.Date);
+            e.HasIndex(x => x.OccurredAt);
             e.HasOne<Account>().WithMany().HasForeignKey(x => x.AccountId).OnDelete(DeleteBehavior.Cascade);
         });
 

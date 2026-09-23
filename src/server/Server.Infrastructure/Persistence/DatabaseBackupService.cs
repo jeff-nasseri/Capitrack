@@ -42,7 +42,8 @@ public sealed class DatabaseBackupService(CapitrackDbContext db) : IDatabaseBack
                 accountTags.GetValueOrDefault(a.Id, []))).ToList(),
             transactions.Select(t => new SnapshotTransaction(
                 t.Id, t.AccountId, t.Symbol.Value, t.Type.Value, t.Quantity.Value, t.Price, t.Fee,
-                t.Currency.Value, t.Date.Value, t.Notes, transactionTags.GetValueOrDefault(t.Id, []))).ToList(),
+                t.Currency.Value, t.Date.Value, t.Notes, transactionTags.GetValueOrDefault(t.Id, []),
+                t.IsStaked, t.OccurredAt, t.ExternalId)).ToList(),
             tags.Select(t => new SnapshotTag(t.Id, t.Name, t.Color.Value)).ToList(),
             goals.Select(g => new SnapshotGoal(
                 g.Id, g.Title, g.TargetAmount, g.TargetDate.Value, g.Description, g.Achieved, g.CategoryId,
@@ -105,7 +106,7 @@ public sealed class DatabaseBackupService(CapitrackDbContext db) : IDatabaseBack
                 .Select(t => (Src: t, Entity: Transaction.Create(
                     accountMap[t.AccountId], Symbol.Create(t.Symbol), TransactionType.From(t.Type),
                     Quantity.Create(t.Quantity), t.Price, t.Fee, CurrencyCode.Create(t.Currency),
-                    TradeDate.Create(t.Date), t.Notes)))
+                    TradeDate.Create(t.Date), t.Notes, t.IsStaked, t.OccurredAt, t.ExternalId)))
                 .ToList();
             db.Transactions.AddRange(transactionPairs.Select(p => p.Entity));
             await db.SaveChangesAsync(ct);

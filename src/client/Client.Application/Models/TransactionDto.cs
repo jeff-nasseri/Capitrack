@@ -17,4 +17,6 @@ public class TransactionDto
     public DateTime CreatedAt { get; set; }
     public string? AccountName { get; set; }
     public List<TagDto> Tags { get; set; } = [];
+    public DateTime? OccurredAt { get; set; }
+    public string? ExternalId { get; set; }
 }

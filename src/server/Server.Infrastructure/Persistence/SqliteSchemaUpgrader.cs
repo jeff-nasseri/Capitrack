@@ -31,6 +31,23 @@ public static class SqliteSchemaUpgrader
         CreateMissingTables(db, script, existingTables, logger);
         AddMissingColumns(db, existingTables, logger);
         RebuildTablesWithChangedStorage(db, script, existingTables, logger);
+        CreateMissingIndexes(db, script, existingTables, logger);
+    }
+
+    /// <summary>Creates the model's indexes (incl. unique constraints) that an existing table does not have yet.</summary>
+    private static void CreateMissingIndexes(DbContext db, List<(string Table, bool IsCreateTable, string Sql)> script,
+                                             HashSet<string> existingTables, ILogger? logger)
+    {
+        var existingIndexes = QuerySingleColumn(db, "SELECT name FROM sqlite_master WHERE type = 'index'")
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var (table, isCreateTable, sql) in script)
+        {
+            if (isCreateTable || !existingTables.Contains(table)) continue;
+            var name = Regex.Match(sql, "INDEX \"([^\"]+)\"", RegexOptions.IgnoreCase);
+            if (!name.Success || existingIndexes.Contains(name.Groups[1].Value)) continue;
+            logger?.LogInformation("Schema upgrade: {Ddl}", sql);
+            db.Database.ExecuteSqlRaw(sql);
+        }
     }
 
     /// <summary>EF's create script split into statements, each tagged with the table it targets.</summary>

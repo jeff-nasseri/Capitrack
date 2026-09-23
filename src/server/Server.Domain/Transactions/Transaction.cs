@@ -33,6 +33,15 @@ public sealed class Transaction : AggregateRoot<int>
     /// <summary>Whether this transaction represents staked crypto (a staked outflow does not reduce the holding).</summary>
     public bool IsStaked { get; private set; }
 
+    /// <summary>
+    /// The exact instant (UTC) the transaction happened, when the source provides one. It orders
+    /// same-day transactions and drives price lookups; <see cref="Date"/> is its UTC calendar date.
+    /// </summary>
+    public DateTime? OccurredAt { get; private set; }
+
+    /// <summary>The source's own identifier (e.g. a blockchain transaction hash), when it has one.</summary>
+    public string? ExternalId { get; private set; }
+
     /// <summary>When the transaction record was created.</summary>
     public DateTime CreatedAt { get; private set; }
 
@@ -46,7 +55,7 @@ public sealed class Transaction : AggregateRoot<int>
     /// <summary>Creates a new transaction, requiring a valid owning account.</summary>
     public static Transaction Create(int accountId, Symbol symbol, TransactionType type, Quantity quantity,
                                      decimal price, decimal fee, CurrencyCode currency, TradeDate date, string? notes,
-                                     bool isStaked = false)
+                                     bool isStaked = false, DateTime? occurredAt = null, string? externalId = null)
     {
         if (accountId <= 0)
             throw new DomainException("A transaction must belong to an account.");
@@ -61,9 +70,19 @@ public sealed class Transaction : AggregateRoot<int>
             Currency = currency,
             Date = date,
             Notes = notes ?? "",
-            IsStaked = isStaked
+            IsStaked = isStaked,
+            OccurredAt = ToUtc(occurredAt),
+            ExternalId = string.IsNullOrWhiteSpace(externalId) ? null : externalId.Trim()
         };
     }
+
+    private static DateTime? ToUtc(DateTime? value) => value switch
+    {
+        null => null,
+        { Kind: DateTimeKind.Utc } v => v,
+        { Kind: DateTimeKind.Local } v => v.ToUniversalTime(),
+        var v => DateTime.SpecifyKind(v.Value, DateTimeKind.Utc)
+    };
 
     /// <summary>Updates the transaction's editable fields.</summary>
     public void Update(Symbol symbol, TransactionType type, Quantity quantity, decimal price, decimal fee,

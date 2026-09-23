@@ -12,4 +12,5 @@ namespace Server.Application.Transactions;
 /// <param name="IsStaked">Whether this transaction represents staked crypto.</param>
 public record SelectedTransactionDto(
     string Symbol, string Type, decimal Quantity, decimal Price, decimal Fee,
-    string Currency, string Date, string? Notes, bool IsStaked);
+    string Currency, string Date, string? Notes, bool IsStaked,
+    DateTime? OccurredAt = null, string? ExternalId = null);

@@ -14,7 +14,8 @@ public sealed class ImporterService(CapitrackDbContext db) : IImporterService
     private static readonly string[] ValidTypes =
         ["buy", "sell", "transfer_in", "transfer_out", "dividend", "interest", "fee"];
 
-    private record ImportedTransaction(string Symbol, string Type, decimal Quantity, decimal Price, decimal Fee, string Currency, string Date, string Notes);
+    private record ImportedTransaction(string Symbol, string Type, decimal Quantity, decimal Price, decimal Fee, string Currency, string Date, string Notes,
+        DateTime? OccurredAt = null, string? ExternalId = null);
 
     // ---- CSV parsing into header->value dictionaries (csv-parse columns:true equivalent) ----
     private static (List<Dictionary<string, string>> Records, List<string> Headers) ParseCsv(string content)
@@ -130,7 +131,9 @@ public sealed class ImporterService(CapitrackDbContext db) : IImporterService
                     tx.Fee,
                     CurrencyCode.Create(tx.Currency),
                     TradeDate.Create(tx.Date),
-                    tx.Notes));
+                    tx.Notes,
+                    occurredAt: tx.OccurredAt,
+                    externalId: tx.ExternalId));
                 existing.Add(fp);
                 imported++;
             }
@@ -159,7 +162,7 @@ public sealed class ImporterService(CapitrackDbContext db) : IImporterService
 
             rows.Add(new PreviewTransactionDto(
                 i, tx.Symbol, tx.Type, tx.Quantity, tx.Price, tx.Fee,
-                tx.Currency, tx.Date, tx.Notes, existing.Contains(fp), canStake));
+                tx.Currency, tx.Date, tx.Notes, existing.Contains(fp), canStake, tx.OccurredAt, tx.ExternalId));
         }
         return new PreviewFileDto(fileName, format, rows);
     }
@@ -188,7 +191,9 @@ public sealed class ImporterService(CapitrackDbContext db) : IImporterService
                     CurrencyCode.Create(tx.Currency),
                     TradeDate.Create(tx.Date),
                     tx.Notes,
-                    isStaked: tx.IsStaked));
+                    isStaked: tx.IsStaked,
+                    occurredAt: tx.OccurredAt,
+                    externalId: tx.ExternalId));
                 existing.Add(fp);
                 imported++;
             }
@@ -223,14 +228,15 @@ public sealed class ImporterService(CapitrackDbContext db) : IImporterService
             decimal price = Num(Get(r, "Price per share", "0"), sep);
             decimal total = Math.Abs(Num(Get(r, "Total Amount", "0"), sep));
             var currency = Get(r, "Currency", "USD").Trim();
-            var date = IsoDate(Get(r, "Date").Trim());
+            var when = ImportTimeParser.Iso(Get(r, "Date"));
+            var date = when?.Date ?? "";
 
             decimal finalQty = quantity, finalPrice = price;
             if (txType == "dividend") { finalQty = total; finalPrice = 1; }
             if (txType == "transfer_in" && quantity == 0 && total == 0) { finalQty = Num(Get(r, "Quantity", "0"), sep); finalPrice = 0; }
             if (string.IsNullOrEmpty(date)) continue;
 
-            list.Add(new ImportedTransaction(ticker.ToUpperInvariant(), txType, finalQty, finalPrice, 0, currency, date, $"Revolut: {type}"));
+            list.Add(new ImportedTransaction(ticker.ToUpperInvariant(), txType, finalQty, finalPrice, 0, currency, date, $"Revolut: {type}", when?.Utc));
         }
         return list;
     }
@@ -248,7 +254,8 @@ public sealed class ImporterService(CapitrackDbContext db) : IImporterService
             decimal fee = Math.Abs(Num(Get(r, "Fee", "0"), sep));
             var currency = Get(r, "Currency", "XAU").Trim();
             var dateStr = Get(r, "Started Date", Get(r, "Completed Date")).Trim();
-            var date = string.IsNullOrEmpty(dateStr) ? "" : dateStr.Split(' ')[0];
+            var when = ImportTimeParser.Iso(dateStr); // Revolut gives no zone: taken as UTC
+            var date = when?.Date ?? (string.IsNullOrEmpty(dateStr) ? "" : dateStr.Split(' ')[0]);
             if (string.IsNullOrEmpty(date)) continue;
 
             var symbol = symbolMap.GetValueOrDefault(currency, currency);
@@ -257,7 +264,7 @@ public sealed class ImporterService(CapitrackDbContext db) : IImporterService
             else if (description.StartsWith("Exchanged to")) txType = "buy";
             else continue;
 
-            list.Add(new ImportedTransaction(symbol, txType, Math.Abs(amount), 0, fee, "EUR", date, $"Revolut Commodity: {description} ({currency})"));
+            list.Add(new ImportedTransaction(symbol, txType, Math.Abs(amount), 0, fee, "EUR", date, $"Revolut Commodity: {description} ({currency})", when?.Utc));
         }
         return list;
     }
@@ -274,16 +281,9 @@ public sealed class ImporterService(CapitrackDbContext db) : IImporterService
             var amountUnit = Get(r, "Amount unit", "BTC").Trim();
             decimal fiatUsd = Math.Abs(Num(Get(r, "Fiat (USD)", "0"), sep));
             decimal fee = Math.Abs(Num(Get(r, "Fee", "0"), sep));
-            var dateStr = Get(r, "Date").Trim();
             var txId = Get(r, "Transaction ID").Trim();
-
-            string date = "";
-            if (!string.IsNullOrEmpty(dateStr))
-            {
-                var parts = dateStr.Split('/');
-                if (parts.Length == 3)
-                    date = $"{parts[2]}-{parts[0].PadLeft(2, '0')}-{parts[1].PadLeft(2, '0')}";
-            }
+            var when = ImportTimeParser.Trezor(Get(r, "Timestamp"), Get(r, "Date"), Get(r, "Time"));
+            var date = when?.Date ?? "";
             if (string.IsNullOrEmpty(date) || amount == 0) continue;
 
             var symbol = symbolMap.GetValueOrDefault(amountUnit, $"{amountUnit}-USD");
@@ -292,7 +292,7 @@ public sealed class ImporterService(CapitrackDbContext db) : IImporterService
 
             decimal price = amount > 0 ? fiatUsd / amount : 0;
             var notes = !string.IsNullOrEmpty(txId) ? $"TxID: {txId[..Math.Min(16, txId.Length)]}..." : $"Trezor {amountUnit}";
-            list.Add(new ImportedTransaction(symbol, txType, amount, price, fee, "USD", date, notes));
+            list.Add(new ImportedTransaction(symbol, txType, amount, price, fee, "USD", date, notes, when?.Utc, string.IsNullOrEmpty(txId) ? null : txId));
         }
         return list;
     }
@@ -309,11 +309,13 @@ public sealed class ImporterService(CapitrackDbContext db) : IImporterService
             decimal price = Num(Or(Pick(r, "price"), "0"), sep);
             decimal fee = Num(Or(Pick(r, "fee"), "0"), sep);
             var currency = Or(Pick(r, "currency", "Currency", "CURRENCY"), "EUR");
-            var date = Pick(r, "date", "Date", "DATE");
+            var rawDate = Pick(r, "date");
+            var when = ImportTimeParser.Iso(rawDate);
+            var date = when?.Date ?? rawDate;
             var notes = Pick(r, "notes", "Notes", "NOTES");
             if (string.IsNullOrEmpty(symbol) || string.IsNullOrEmpty(date)) continue;
             if (!ValidTypes.Contains(type)) continue;
-            list.Add(new ImportedTransaction(symbol, type, quantity, price, fee, currency, date, notes));
+            list.Add(new ImportedTransaction(symbol, type, quantity, price, fee, currency, date, notes, when?.Utc));
         }
         return list;
     }
@@ -338,11 +340,5 @@ public sealed class ImporterService(CapitrackDbContext db) : IImporterService
     private static DecimalSeparator Separator(List<Dictionary<string, string>> records, params string[] columns) =>
         DecimalParser.Detect(records.SelectMany(r => columns.Select(c => r.TryGetValue(c, out var v) ? v : null)));
 
-    private static string IsoDate(string s)
-    {
-        if (string.IsNullOrEmpty(s)) return "";
-        return DateTimeOffset.TryParse(s, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var dto)
-            ? dto.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) : "";
-    }
 
 }
